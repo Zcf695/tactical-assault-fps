@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>战术突击 - 搜打撤</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: 'Microsoft YaHei', Arial, sans-serif; background: #0a0a0f; user-select: none; }
+        #gameCanvas { display: block; }
+
+        /* ====== Rarity Colors ====== */
+        .rarity-common    { --rarity-bg: #3a3a3a; --rarity-border: #555; --rarity-color: #9e9e9e; }
+        .rarity-uncommon  { --rarity-bg: #1a3a1a; --rarity-border: #3a7a3a; --rarity-color: #4caf50; }
+        .rarity-rare      { --rarity-bg: #1a2a3a; --rarity-border: #3a5a8a; --rarity-color: #2196f3; }
+        .rarity-epic      { --rarity-bg: #221a32; --rarity-border: #6a3a8a; --rarity-color: #9c27b0; }
+        .rarity-legendary { --rarity-bg: #32281a; --rarity-border: #8a6a3a; --rarity-color: #ff9800; }
+        .rarity-ultimate  { --rarity-bg: #321a1a; --rarity-border: #8a3a3a; --rarity-color: #f44336; }
+
+        /* ====== Lobby ====== */
+        #lobbyScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+            display: flex; z-index: 300;
+        }
+        .lobby-left {
+            width: 220px; min-width: 220px; background: rgba(22,27,34,0.95);
+            border-right: 1px solid #30363d; padding: 20px 0; display: flex; flex-direction: column;
+        }
+        .lobby-logo { text-align: center; padding: 15px; margin-bottom: 20px; }
+        .lobby-logo h1 { color: #f0f6fc; font-size: 22px; letter-spacing: 3px; }
+        .lobby-logo p { color: #8b949e; font-size: 11px; margin-top: 5px; letter-spacing: 2px; }
+        .lobby-menu { list-style: none; flex: 1; }
+        .lobby-menu li {
+            padding: 14px 25px; color: #8b949e; cursor: pointer; transition: all 0.2s;
+            border-left: 3px solid transparent; font-size: 13px;
+        }
+        .lobby-menu li:hover { background: rgba(255,152,0,0.1); color: #ff9800; }
+        .lobby-menu li.active { background: rgba(255,152,0,0.15); color: #ff9800; border-left-color: #ff9800; }
+        .lobby-money { padding: 20px; text-align: center; border-top: 1px solid #30363d; }
+        .lobby-money .money-val { color: #ff9800; font-size: 20px; font-weight: bold; }
+        .lobby-money .money-label { color: #6e7681; font-size: 10px; margin-top: 3px; }
+
+        .lobby-main { flex: 1; padding: 35px; overflow-y: auto; }
+        .lobby-section { display: none; }
+        .lobby-section.active { display: block; }
+        .section-title {
+            color: #f0f6fc; font-size: 26px; margin-bottom: 25px;
+            padding-bottom: 12px; border-bottom: 1px solid #30363d;
+        }
+
+        .mode-cards { display: flex; gap: 25px; margin-bottom: 35px; }
+        .mode-card {
+            flex: 1; background: rgba(22,27,34,0.8); border: 2px solid #30363d;
+            border-radius: 8px; padding: 25px; cursor: pointer; transition: all 0.3s;
+        }
+        .mode-card:hover { border-color: #ff9800; transform: translateY(-3px); }
+        .mode-card.selected { border-color: #ff9800; background: rgba(255,152,0,0.05); }
+        .mode-card h3 { color: #f0f6fc; font-size: 20px; margin-bottom: 10px; }
+        .mode-card .mode-desc { color: #8b949e; font-size: 12px; line-height: 1.8; margin-bottom: 12px; }
+        .mode-card .mode-stats { font-size: 11px; color: #6e7681; }
+        .mode-card .mode-stats span { color: #ff9800; }
+        .start-btn {
+            display: block; width: 280px; margin: 0 auto; padding: 16px;
+            font-size: 18px; background: linear-gradient(135deg, #ff9800, #f57c00);
+            border: none; color: #fff; cursor: pointer; border-radius: 5px;
+            font-weight: bold; letter-spacing: 3px; transition: all 0.3s;
+        }
+        .start-btn:hover { transform: scale(1.02); box-shadow: 0 5px 25px rgba(255,152,0,0.4); }
+
+        .player-stats {
+            display: flex; gap: 25px; margin-bottom: 25px; padding: 18px;
+            background: rgba(22,27,34,0.6); border-radius: 6px;
+        }
+        .stat-item { text-align: center; flex: 1; }
+        .stat-item .stat-val { font-size: 26px; font-weight: bold; color: #ff9800; }
+        .stat-item .stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+
+        /* ====== Grid System ====== */
+        .grid-cell {
+            background: rgba(0,0,0,0.3); border: 1px solid #2a2a2a;
+            border-radius: 2px;
+        }
+        .grid-cell.empty { background: rgba(0,0,0,0.2); border-color: #1a1a1a; }
+
+        .grid-item {
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            border: 2px solid var(--rarity-border); border-radius: 4px;
+            background: var(--rarity-bg); position: relative; z-index: 2;
+            transition: all 0.15s; overflow: hidden;
+        }
+        .grid-item:hover { filter: brightness(1.3); transform: scale(1.03); z-index: 10; }
+        .grid-item.taken { opacity: 0.35; filter: grayscale(0.8); pointer-events: none; }
+        .grid-item.dragging { opacity: 0.3; transform: scale(0.95); }
+        img.drag-ghost { pointer-events: none; }
+        .grid-cell.drag-over { background: rgba(255,152,0,0.35) !important; border-color: #ff9800 !important; box-shadow: inset 0 0 8px rgba(255,152,0,0.4); }
+
+        /* Search slot reveal animation */
+        .grid-item.search-slot.unrevealed {
+            --rarity-bg: #1a1a1a; --rarity-border: #333; --rarity-color: #555;
+            cursor: default; background: #151515; border-color: #2a2a2a;
+        }
+        .grid-item.search-slot .search-spinner {
+            width: 22px; height: 22px; border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: #888; border-radius: 50%;
+            animation: spin 0.5s linear infinite; margin-bottom: 2px;
+        }
+        /* Tier indicators - same color for all, only speed differs */
+        .search-tier-1 { animation-duration: 1s !important; }
+        .search-tier-2 { animation-duration: 1s !important; }
+        .search-tier-3 { animation-duration: 1s !important; }
+        .search-tier-4 { animation-duration: 1s !important; }
+        .search-tier-dot {
+            font-size: 12px; line-height: 1; margin-top: 1px; color: #555;
+        }
+        .grid-item.search-slot.revealed { animation: revealPop 0.3s ease-out; cursor: pointer; }
+        .grid-item.search-slot.revealed.rarity-ultimate { animation: revealUltimate 0.5s ease-out; }
+        .grid-item.search-slot.revealed.rarity-legendary { animation: revealLegendary 0.4s ease-out; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes revealPop { 0% { transform: scale(0.7); opacity: 0.2; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes revealLegendary { 0% { transform: scale(0.6); opacity: 0; filter: brightness(2); } 50% { transform: scale(1.12); filter: brightness(1.3); } 100% { transform: scale(1); opacity: 1; filter: brightness(1); } }
+        @keyframes revealUltimate { 0% { transform: scale(0.4); opacity: 0; filter: brightness(3); } 40% { transform: scale(1.2); filter: brightness(1.5); } 100% { transform: scale(1); opacity: 1; filter: brightness(1); } }
+        .grid-item.search-slot.ultimate-glow {
+            animation: itemGlow 0.8s ease-out;
+            box-shadow: 0 0 20px rgba(255,50,0,0.8), 0 0 40px rgba(255,50,0,0.4);
+        }
+        @keyframes itemGlow {
+            0% { box-shadow: 0 0 30px rgba(255,50,0,1), 0 0 60px rgba(255,100,0,0.8); filter: brightness(2); }
+            100% { box-shadow: 0 0 0px transparent, 0 0 0px transparent; filter: brightness(1); }
+        }
+        .grid-item .gi-icon { font-size: 22px; line-height: 1; }
+        .grid-item .gi-name { font-size: 8px; color: var(--rarity-color); margin-top: 1px; text-align: center; white-space: nowrap; }
+        .grid-item .gi-value { font-size: 7px; color: #888; position: absolute; bottom: 2px; right: 4px; }
+
+        .grid-cell.drag-over { background: rgba(255,152,0,0.25) !important; border-color: #ff9800 !important; }
+        .sort-btn {
+            padding: 8px 16px; background: #30363d; color: #f0f6fc; border: 1px solid #484f58;
+            border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s;
+        }
+        .sort-btn:hover { background: #ff9800; border-color: #ff9800; color: #fff; }
+
+        /* Inventory sections (胸挂/口袋/背包/安全箱) */
+        .inv-section {
+            background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 4px; padding: 4px;
+        }
+        .inv-section.secure-section { border-color: #ff9800; background: rgba(255,152,0,0.05); }
+        .inv-section-header { color: #f0f6fc; font-size: 11px; font-weight: bold; margin-bottom: 3px; display: flex; justify-content: space-between; }
+        .inv-count { color: #8b949e; font-size: 10px; }
+        .inv-mini-grid { display: grid; gap: 1px; }
+
+        /* Character equipment slot */
+        .char-slot {
+            background: rgba(0,0,0,0.5); border: 1px solid #2a2a2a; border-radius: 2px;
+            display: flex; align-items: center; justify-content: center; font-size: 14px;
+            cursor: pointer; position: relative;
+        }
+        .char-slot:hover { border-color: #ff9800; }
+        .char-slot.equipped { border-color: var(--rarity-border); background: var(--rarity-bg); }
+        .char-slot .slot-dur { position: absolute; bottom: 1px; right: 2px; font-size: 6px; color: #8b949e; }
+
+        /* Stash grid in lobby */
+        .stash-grid {
+            display: grid; gap: 2px; padding: 8px;
+            background: rgba(0,0,0,0.4); border: 2px solid #30363d;
+            border-radius: 6px; width: fit-content;
+        }
+
+        /* ====== Shop ====== */
+        .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .shop-item-card {
+            display: flex; flex-direction: column; align-items: center; padding: 12px;
+            border: 2px solid var(--rarity-border); border-radius: 6px;
+            background: var(--rarity-bg); transition: all 0.2s;
+        }
+        .shop-item-card:hover { filter: brightness(1.2); }
+        .shop-item-card .shop-icon { font-size: 32px; margin-bottom: 4px; }
+        .shop-item-card .shop-name { font-size: 13px; font-weight: bold; color: var(--rarity-color); margin-bottom: 2px; }
+        .shop-item-card .shop-rarity { font-size: 9px; color: var(--rarity-color); margin-bottom: 4px; opacity: 0.8; }
+        .shop-item-card .shop-owned { font-size: 10px; color: #6e7681; margin-bottom: 8px; }
+        .shop-btns { display: flex; gap: 4px; width: 100%; }
+        .shop-btn { flex: 1; padding: 5px 2px; font-size: 10px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+        .shop-btn.buy { background: #2e7d32; color: #fff; }
+        .shop-btn.buy:hover { background: #43a047; }
+        .shop-btn.buy:disabled { background: #333; color: #555; cursor: not-allowed; }
+        .shop-btn.sell { background: #c62828; color: #fff; }
+        .shop-btn.sell:hover { background: #e53935; }
+        .shop-btn.sell:disabled { background: #333; color: #555; cursor: not-allowed; }
+        .cat-title { color: #f0f6fc; margin: 20px 0 12px; font-size: 14px; }
+
+        /* ====== Game HUD ====== */
+        #gameHUD { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; display: none; }
+        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 100; }
+        .crosshair-dot { width: 3px; height: 3px; background: rgba(255,255,255,0.9); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+        .crosshair-ring { width: 18px; height: 18px; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); transition: all 0.3s; }
+
+        .status-panel { position: absolute; bottom: 25px; left: 25px; }
+        .status-bar { width: 180px; height: 16px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; margin-bottom: 4px; position: relative; }
+        .status-fill { height: 100%; transition: width 0.2s; }
+        .status-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
+        .status-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 10px; transition: width 0.3s; }
+        #healthFill { background: linear-gradient(90deg, #f44336, #ef5350); }
+        #armorFill { background: linear-gradient(90deg, #4a90d9, #64b5f6); }
+        #staminaFill { background: linear-gradient(90deg, #4caf50, #81c784); }
+
+        #timerPanel { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); }
+        .timer-box { background: rgba(0,0,0,0.8); border: 2px solid #ff9800; border-radius: 4px; padding: 6px 25px; text-align: center; }
+        .timer-label { font-size: 9px; color: #ff9800; letter-spacing: 2px; }
+        .timer-value { font-size: 28px; font-weight: bold; color: #fff; font-family: Consolas, monospace; }
+        .timer-value.warning { color: #f44336; animation: pulse 0.5s ease-in-out infinite; }
+        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+        #minimap { position: absolute; top: 15px; right: 15px; width: 140px; height: 140px; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; overflow: hidden; }
+        #minimapCanvas { width: 100%; height: 100%; border-radius: 50%; }
+
+        #weaponBar { position: absolute; bottom: 25px; right: 25px; display: flex; gap: 8px; }
+        .weapon-slot { width: 72px; height: 52px; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.2); border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #666; font-size: 10px; transition: all 0.2s; position: relative; }
+        .weapon-slot.active { border-color: #ff9800; background: rgba(255,152,0,0.15); box-shadow: 0 0 12px rgba(255,152,0,0.3); }
+        .weapon-slot.has-weapon { color: #fff; }
+        .weapon-slot .weapon-icon { font-size: 24px; margin-bottom: 2px; }
+        .weapon-slot .weapon-name { font-size: 10px; font-weight: bold; }
+        .weapon-slot .slot-key { position: absolute; top: 2px; left: 4px; font-size: 9px; color: #ff9800; }
+
+        #ammoDisplay { position: absolute; bottom: 95px; right: 25px; text-align: right; }
+        .ammo-main { font-size: 36px; font-weight: bold; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); line-height: 1; }
+        .ammo-reserve { font-size: 18px; color: #888; }
+        .ammo-type { font-size: 10px; color: #666; margin-top: 2px; }
+
+        #quickBar { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+        .quick-slot { width: 48px; height: 48px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; font-size: 18px; position: relative; }
+        .quick-slot .item-count { position: absolute; bottom: 1px; right: 3px; font-size: 10px; font-weight: bold; color: #ff9800; }
+        .quick-slot .slot-key { position: absolute; top: 1px; left: 3px; font-size: 8px; color: #888; }
+
+        #searchPrompt { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); display: none; }
+        .prompt-box { background: rgba(0,0,0,0.85); border: 1px solid #ff9800; border-radius: 4px; padding: 10px 20px; text-align: center; }
+        .prompt-title { font-size: 14px; color: #fff; font-weight: bold; margin-bottom: 3px; }
+        .prompt-hint { font-size: 11px; color: #ff9800; }
+
+        #extractPrompt { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: none; }
+        .extract-box { background: rgba(0,0,0,0.9); border: 3px solid #ff9800; border-radius: 8px; padding: 20px 40px; text-align: center; animation: glow 1s ease-in-out infinite; }
+        .extract-box h2 { color: #ff9800; font-size: 24px; margin-bottom: 8px; }
+        .extract-box p { color: #fff; font-size: 13px; margin-bottom: 12px; }
+        .extract-progress { width: 220px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin: 0 auto; }
+        .extract-progress-fill { height: 100%; background: linear-gradient(90deg, #ff9800, #ffc107); transition: width 0.1s; width: 0%; }
+        @keyframes glow { 0%,100% { box-shadow: 0 0 20px rgba(255,152,0,0.5); } 50% { box-shadow: 0 0 40px rgba(255,152,0,0.8); } }
+
+        #damageOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 40%, rgba(255,0,0,0.4) 100%); pointer-events: none; z-index: 40; opacity: 0; transition: opacity 0.1s; }
+
+        #clickToPlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 22px; text-align: center; z-index: 100; display: none; animation: blink 1.5s ease-in-out infinite; pointer-events: none; }
+        #clickToPlay span { font-size: 13px; color: #888; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* ====== Search Progress Animation ====== */
+        #searchProgressOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 140; display: none; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.3); pointer-events: none;
+        }
+        .search-progress-box {
+            background: rgba(22,27,34,0.95); border: 2px solid #ff9800;
+            border-radius: 10px; padding: 25px 40px; text-align: center;
+        }
+        .search-progress-box .sp-title { color: #f0f6fc; font-size: 18px; margin-bottom: 8px; }
+        .search-progress-box .sp-hint { color: #8b949e; font-size: 11px; margin-bottom: 15px; }
+        .search-progress-bar {
+            width: 260px; height: 12px; background: #333; border-radius: 6px; overflow: hidden;
+        }
+        .search-progress-fill {
+            height: 100%; background: linear-gradient(90deg, #ff9800, #ffc107);
+            border-radius: 6px; transition: width 0.05s; width: 0%;
+        }
+
+        /* ====== Two-Panel Search Screen ====== */
+        #searchScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.88); z-index: 150; display: none; justify-content: center; align-items: center; }
+        .search-layout { display: flex; gap: 30px; align-items: flex-start; }
+        .search-panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+        .search-panel h3 { color: #f0f6fc; font-size: 15px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        .search-panel h3 .panel-subtitle { font-size: 11px; color: #8b949e; }
+        .search-grid { display: grid; gap: 2px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 4px; }
+        .search-actions { margin-top: 12px; display: flex; gap: 8px; }
+        .search-actions button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .btn-takeall { background: linear-gradient(135deg, #ff9800, #f57c00); color: #fff; }
+        .btn-close { background: #30363d; color: #8b949e; }
+        .btn-close:hover { color: #f44336; }
+        .loot-value-display { color: #ff9800; font-size: 14px; font-weight: bold; margin-top: 8px; text-align: right; }
+
+        /* ====== Result Screen ====== */
+        #resultScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 200; display: none; justify-content: center; align-items: center; }
+        .result-container { text-align: center; width: 450px; }
+        .result-title { font-size: 48px; margin-bottom: 30px; letter-spacing: 6px; }
+        .result-title.success { color: #4caf50; text-shadow: 0 0 25px rgba(76,175,80,0.5); }
+        .result-title.failed { color: #f44336; text-shadow: 0 0 25px rgba(244,67,54,0.5); }
+        .result-stats { background: rgba(22,27,34,0.9); border: 1px solid #30363d; border-radius: 8px; padding: 25px; margin-bottom: 25px; }
+        .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #21262d; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #8b949e; font-size: 13px; }
+        .stat-val { color: #f0f6fc; font-size: 16px; font-weight: bold; }
+        .stat-val.highlight { color: #ff9800; font-size: 22px; }
+        .loot-section { margin-top: 15px; text-align: left; }
+        .loot-title { color: #8b949e; font-size: 12px; margin-bottom: 8px; }
+        .loot-list { max-height: 120px; overflow-y: auto; }
+        .loot-item-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+        .loot-item-row .loot-val { color: #ff9800; }
+        .result-buttons { display: flex; gap: 12px; justify-content: center; }
+        .result-btn { padding: 12px 30px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+        .result-btn.primary { background: linear-gradient(135deg, #ff9800, #f57c00); color: #fff; }
+        .result-btn.secondary { background: #30363d; color: #8b949e; }
+        .result-btn:hover { transform: scale(1.05); }
+
+        #killFeed { position: absolute; top: 90px; right: 170px; }
+        .kill-item { background: rgba(0,0,0,0.6); border-left: 2px solid #f44336; padding: 5px 10px; margin-bottom: 3px; color: #fff; font-size: 11px; animation: fadeOut 3s forwards; }
+        @keyframes fadeOut { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <!-- ====== Login Screen ====== -->
+    <div id="loginScreen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0d1117,#161b22,#0d1117);display:flex;justify-content:center;align-items:center;z-index:500;">
+        <div style="text-align:center;width:360px;padding:40px;background:rgba(22,27,34,0.95);border:1px solid #30363d;border-radius:12px;">
+            <h1 style="color:#ff9800;font-size:28px;margin-bottom:5px;">战术突击</h1>
+            <p style="color:#8b949e;font-size:12px;margin-bottom:25px;">搜 · 打 · 撤</p>
+            <input id="loginUsername" type="text" placeholder="输入用户名" maxlength="20" style="width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f0f6fc;font-size:15px;text-align:center;margin-bottom:12px;outline:none;" onkeydown="if(event.key==='Enter')loginUser()">
+            <div style="display:flex;gap:8px;">
+                <button onclick="loginUser()" style="flex:1;padding:12px;background:linear-gradient(135deg,#ff9800,#f57c00);border:none;color:#fff;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;">进入游戏</button>
+                <button onclick="registerUser()" style="flex:1;padding:12px;background:#30363d;border:1px solid #484f58;color:#f0f6fc;border-radius:6px;font-size:14px;cursor:pointer;">新建存档</button>
+            </div>
+            <p id="loginMsg" style="color:#f44336;font-size:11px;margin-top:10px;min-height:16px;"></p>
+            <p style="color:#6e7681;font-size:10px;margin-top:15px;">存档保存在浏览器本地</p>
+        </div>
+    </div>
+
+    <!-- ====== Lobby ====== -->
+    <div id="lobbyScreen">
+        <div class="lobby-left">
+            <div class="lobby-logo"><h1>战术突击</h1><p>搜 · 打 · 撤</p></div>
+            <div style="padding:10px 20px;color:#f0f6fc;font-size:12px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;">
+                <span>👤 <span id="displayUsername">---</span></span>
+                <span onclick="logoutUser()" style="color:#f44336;cursor:pointer;font-size:10px;">退出</span>
+            </div>
+            <ul class="lobby-menu">
+                <li class="active" onclick="switchLobbyTab('action')">🎯 开始行动</li>
+                <li onclick="switchLobbyTab('loadout')">🎖️ 装备配置</li>
+                <li onclick="switchLobbyTab('inventory')">📦 仓库</li>
+                <li onclick="switchLobbyTab('shop')">🛒 交易市场</li>
+                <li onclick="switchLobbyTab('missions')">📋 任务</li>
+                <li onclick="switchLobbyTab('stats')">📊 统计</li>
+                <li onclick="switchLobbyTab('mail')">📬 邮件 <span id="mailBadge" style="background:#f44336;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;display:none;">0</span></li>
+            </ul>
+            <div class="lobby-money">
+                <div class="money-val">₵ <span id="lobbyMoney">1,000,000</span></div>
+                <div class="money-label">持有资金</div>
+                <div style="margin-top:8px;font-size:10px;color:#6e7681;">仓库估值: ₵<span id="stashValueSidebar">0</span></div>
+            </div>
+        </div>
+        <div class="lobby-main">
+            <div id="tab-action" class="lobby-section active">
+                <h2 class="section-title">选择行动</h2>
+                <div class="mode-cards">
+                    <div class="mode-card selected" onclick="selectMode('normal')">
+                        <h3>常规行动</h3>
+                        <div class="mode-desc">标准难度任务<br>适合新手熟悉地图<br>物资丰富，敌人适中</div>
+                        <div class="mode-stats">时长：<span>15分钟</span><br>敌人密度：<span>中等</span><br>准入费：<span>₵ 0</span></div>
+                    </div>
+                    <div class="mode-card" onclick="selectMode('hard')">
+                        <h3>高危行动</h3>
+                        <div class="mode-desc">高风险高回报<br>更多敌人，更强火力<br>高级物资刷新概率提升</div>
+                        <div class="mode-stats">时长：<span>10分钟</span><br>敌人密度：<span>高</span><br>准入费：<span>₵ 2,000</span></div>
+                    </div>
+                </div>
+                <div style="margin-bottom:15px;display:flex;align-items:center;gap:8px;">
+                    <span style="color:#8b949e;font-size:12px;">🗺️ 地图:</span>
+                    <select id="mapSelect" onchange="selectMap(this.value)" style="background:#161b22;color:#f0f6fc;border:1px solid #30363d;border-radius:4px;padding:6px 10px;font-size:12px;">
+                        <option value="military_base">军事基地</option>
+                        <option value="industrial_port">工业港口</option>
+                        <option value="forest_outpost">森林哨站</option>
+                    </select>
+                </div>
+                <button class="start-btn" onclick="startGame()">开始行动</button>
+            </div>
+
+            <div id="tab-loadout" class="lobby-section">
+                <h2 class="section-title">装备配置</h2>
+                <div class="player-stats">
+                    <div class="stat-item"><div class="stat-val" id="statKills">0</div><div class="stat-label">总击杀</div></div>
+                    <div class="stat-item"><div class="stat-val" id="statExtracts">0</div><div class="stat-label">成功撤离</div></div>
+                    <div class="stat-item"><div class="stat-val" id="statValue">0</div><div class="stat-label">总带出价值</div></div>
+                    <div class="stat-item"><div class="stat-val" id="statGames">0</div><div class="stat-label">总场次</div></div>
+                </div>
+                <p style="color:#8b949e;font-size:13px;margin-top:30px;line-height:1.8;">
+                    💡 装备配置说明：<br><br>
+                    • 自动从仓库带入：<b style="color:#ff9800;">2急救包 + 5绷带 + 1止痛药 + 弹药</b><br>
+                    • <b style="color:#4caf50;">撤离成功</b>：背包物品 + 带入装备全部带回仓库<br>
+                    • <b style="color:#f44336;">阵亡</b>：带入的装备和背包物品全部丢失<br>
+                    • 开局默认武器：突击步枪 + 手枪<br>
+                    • 在仓库页面可管理网格物品，市场可买卖装备
+                </p>
+            </div>
+
+            <div id="tab-inventory" class="lobby-section">
+                <h2 class="section-title">备战</h2>
+                <div style="display:flex;gap:12px;">
+                    <!-- LEFT: Character Equipment Panel -->
+                    <div style="width:170px;flex-shrink:0;">
+                        <div id="charPanel" style="background:rgba(0,0,0,0.4);border:1px solid #30363d;border-radius:6px;padding:8px;min-height:500px;">
+                            <div style="text-align:center;font-size:40px;padding:20px 0 10px;">🪖</div>
+                            <div id="equipCharSlots" style="display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(16,26px);gap:2px;justify-content:center;"></div>
+                            <div id="weightDisplay" style="text-align:center;color:#8b949e;font-size:10px;margin-top:8px;padding-top:4px;border-top:1px solid #30363d;">负重 0/70 kg</div>
+                        </div>
+                    </div>
+                    <!-- MIDDLE: Carry-in Inventory (胸挂/口袋/背包/安全箱) -->
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:250px;">
+                        <div class="inv-section">
+                            <div class="inv-section-header">🎽 胸挂 <span class="inv-count" id="rigCount">0/0</span></div>
+                            <div id="rigGrid" class="inv-mini-grid"></div>
+                        </div>
+                        <div class="inv-section">
+                            <div class="inv-section-header">👝 口袋 <span class="inv-count" id="pocketCount">0/5</span></div>
+                            <div id="pocketGrid" class="inv-mini-grid"></div>
+                        </div>
+                        <div class="inv-section">
+                            <div class="inv-section-header">🎒 背包 <span class="inv-count" id="bpCount">0/6</span></div>
+                            <div id="backpackInvGrid" class="inv-mini-grid"></div>
+                        </div>
+                        <div class="inv-section secure-section">
+                            <div class="inv-section-header">🔒 安全箱 <span class="inv-count" id="secureCount">0/9</span></div>
+                            <div id="secureInvGrid" class="inv-mini-grid"></div>
+                        </div>
+                    </div>
+                    <!-- RIGHT: Stash -->
+                    <div style="flex:2;min-width:400px;">
+                        <div class="cat-title">📦 仓库 <span style="font-size:10px;color:#ff9800;">库存估值 ₵<span id="stashValue">0</span></span></div>
+                        <div id="stashGridContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-mail" class="lobby-section">
+                <h2 class="section-title">📬 邮件 <span style="font-size:12px;color:#8b949e;">(仓库放不下时自动存入)</span></h2>
+                <div id="mailItems"><p style="color:#8b949e;">加载中...</p></div>
+                <p style="color:#6e7681;font-size:11px;margin-top:12px;">💡 提示：撤离时仓库满了，物品会自动发送到邮件。双击邮件物品领取到仓库。</p>
+            </div>
+
+            <div id="tab-missions" class="lobby-section">
+                <h2 class="section-title">📋 任务</h2>
+                <div id="missionTabs" style="display:flex;gap:10px;margin-bottom:20px;">
+                    <button class="sort-btn active" onclick="switchMissionTab('daily')">每日任务</button>
+                    <button class="sort-btn" onclick="switchMissionTab('weekly')">每周任务</button>
+                    <button class="sort-btn" onclick="switchMissionTab('faction')">势力任务</button>
+                </div>
+                <div id="missionList"><p style="color:#8b949e;">加载中...</p></div>
+            </div>
+
+            <div id="tab-stats" class="lobby-section">
+                <h2 class="section-title">📊 统计</h2>
+                <div id="statsContent"><p style="color:#8b949e;">加载中...</p></div>
+            </div>
+
+            <div id="tab-shop" class="lobby-section">
+                <h2 class="section-title">交易市场</h2>
+                <p style="color:#8b949e;font-size:13px;margin-bottom:20px;">买卖物资装备（出售价为购买价的50%）</p>
+                <div id="shopItems"><p style="color:#8b949e;">加载中...</p></div>
+                <div style="margin-top:25px;padding:15px;background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);border-radius:6px;">
+                    <p style="color:#ff9800;font-size:12px;">💡 稀有度颜色：<span style="color:#9e9e9e;">普通</span> | <span style="color:#4caf50;">精良</span> | <span style="color:#2196f3;">稀有</span> | <span style="color:#9c27b0;">史诗</span> | <span style="color:#ff9800;">传说</span> | <span style="color:#f44336;">终极</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== Canvas & Overlays ====== -->
+    <canvas id="gameCanvas"></canvas>
+    <div id="crosshair"><div class="crosshair-dot"></div><div class="crosshair-ring"></div></div>
+    <div id="damageOverlay"></div>
+    <div id="healthVignette" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;opacity:0;transition:opacity 0.5s;background:radial-gradient(ellipse at center,transparent 50%,rgba(200,0,0,0.35) 100%);\"></div>
+    <div id="crouchIndicator" style="position:fixed;bottom:40px;left:50%;transform:translateX(-50%);color:#4caf50;font-size:14px;font-weight:bold;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:60;\">⬇ 蹲伏中</div>
+    <div id="clickToPlay">点击画面开始游戏<br><span>ESC 暂停</span></div>
+
+    <!-- ====== Game HUD ====== -->
+    <div id="gameHUD">
+        <div id="timerPanel"><div class="timer-box"><div class="timer-label">撤离倒计时</div><div class="timer-value" id="timerDisplay">15:00</div></div></div>
+        <div id="minimap"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
+        <div id="killFeed"></div>
+
+        <div id="searchPrompt"><div class="prompt-box"><div class="prompt-title" id="promptTitle">武器箱</div><div class="prompt-hint">按 F 搜索</div></div></div>
+
+        <!-- Ground loot prompt -->
+        <div id="groundLootPrompt" style="position:absolute;bottom:200px;left:50%;transform:translateX(-50%);display:none;z-index:55;">
+            <div class="prompt-box" style="border:2px solid #fff;transition:border-color 0.2s;">
+                <div class="prompt-title" id="glTitle">💎 物品</div>
+                <div class="prompt-hint" id="glHint">按 F 拾取</div>
+            </div>
+        </div>
+
+        <div id="extractPrompt">
+            <div class="extract-box">
+                <h2 id="extractTitle">撤离点</h2><p id="extractHint">按 F 开始撤离</p>
+                <div class="extract-progress" id="extractProgressBar" style="display:none;"><div class="extract-progress-fill" id="extractProgressFill"></div></div>
+            </div>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-bar"><div id="healthFill" class="status-fill" style="width:100%"></div><span class="status-label">生命</span><span class="status-val" id="healthValue">100</span></div>
+            <div class="status-bar"><div id="armorFill" class="status-fill" style="width:0%"></div><span class="status-label">护甲</span><span class="status-val" id="armorValue">0</span></div>
+            <div class="status-bar"><div id="staminaFill" class="status-fill stam-fill" style="width:100%"></div><span class="status-label">体力</span><span class="status-val" id="staminaValue">100</span></div>
+        </div>
+
+        <div id="quickBar">
+            <div class="quick-slot"><span class="slot-key">5</span>💊<span class="item-count" id="medkitCount">2</span></div>
+            <div class="quick-slot"><span class="slot-key">6</span>🩹<span class="item-count" id="bandageCount">5</span></div>
+            <div class="quick-slot"><span class="slot-key">7</span>💉<span class="item-count" id="painkillerCount">1</span></div>
+            <div class="quick-slot"><span class="slot-key">8</span>💣<span class="item-count" id="grenadeCount">0</span></div>
+        </div>
+
+        <div id="weaponBar">
+            <div class="weapon-slot active" id="weaponSlot1"><span class="slot-key">1</span><span class="weapon-icon">—</span><span class="weapon-name">空</span></div>
+            <div class="weapon-slot" id="weaponSlot2"><span class="slot-key">2</span><span class="weapon-icon">—</span><span class="weapon-name">空</span></div>
+            <div class="weapon-slot" id="weaponSlot3"><span class="slot-key">3</span><span class="weapon-icon">—</span><span class="weapon-name">空</span></div>
+            <div class="weapon-slot" id="weaponSlot4"><span class="slot-key">4</span><span class="weapon-icon">🔪</span><span class="weapon-name">匕首</span></div>
+        </div>
+
+        <div id="ammoDisplay">
+            <div class="ammo-main"><span id="magAmmo">30</span><span class="ammo-reserve"> / <span id="reserveAmmo">90</span></span></div>
+            <div class="ammo-type" id="ammoType">突击步枪</div>
+        </div>
+    </div>
+
+    <!-- ====== Search Progress Overlay ====== -->
+    <div id="searchProgressOverlay">
+        <div class="search-progress-box">
+            <div class="sp-title" id="searchProgressName">搜索中...</div>
+            <div class="sp-hint">正在搜索容器...</div>
+            <div class="search-progress-bar">
+                <div class="search-progress-fill" id="searchProgressFill" style="width:0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== Two-Panel Search Screen ====== -->
+    <div id="searchScreen">
+        <div class="search-layout">
+            <!-- Hidden legacy elements -->
+            <div id="backpackGrid" style="display:none;"></div>
+            <div id="searchBackpackGrid" style="display:none;"></div>
+            <div id="searchSecureGrid" style="display:none;"></div>
+            <!-- LEFT: 人物装备 + 随身储物 (与备战仓库一致) -->
+            <div class="search-panel" style="width:290px;flex-shrink:0;">
+                <h3>随身装备</h3>
+                <!-- 人物装备槽 (紧凑版) -->
+                <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <div id="searchCharSlots" style="display:grid;grid-template-columns:repeat(4,26px);grid-template-rows:repeat(8,26px);gap:1px;flex-shrink:0;"></div>
+                    <!-- 主武器竖排 -->
+                    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+                        <div id="searchPrimary1" style="background:rgba(0,0,0,0.4);border:1px solid #30363d;border-radius:2px;height:26px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">主武器1</div>
+                        <div id="searchPrimary2" style="background:rgba(0,0,0,0.4);border:1px solid #30363d;border-radius:2px;height:26px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">主武器2</div>
+                        <div style="font-size:8px;color:#666;text-align:center;margin-top:2px;">负重</div>
+                    </div>
+                </div>
+                <!-- 随身储物 (与备战中栏顺序一致) -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <div class="inv-section">
+                        <div class="inv-section-header">🎽 胸挂</div>
+                        <div id="sRigGrid" class="inv-mini-grid"></div>
+                    </div>
+                    <div class="inv-section">
+                        <div class="inv-section-header">👝 口袋</div>
+                        <div id="sPocketGrid" class="inv-mini-grid"></div>
+                    </div>
+                    <div class="inv-section">
+                        <div class="inv-section-header">🎒 背包</div>
+                        <div id="sBackpackGrid" class="inv-mini-grid"></div>
+                    </div>
+                    <div class="inv-section secure-section">
+                        <div class="inv-section-header">🔒 安全箱</div>
+                        <div id="sSecureGrid" class="inv-mini-grid"></div>
+                    </div>
+                </div>
+                <div style="font-size:9px;color:#666;text-align:right;margin-top:2px;">负重 <span id="searchWeight">0</span>/70kg</div>
+                <div class="loot-value-display" style="margin-top:2px;">战利品: <span id="searchLootValue">₵0</span></div>
+                <div class="search-actions" style="margin-top:4px;">
+                    <button class="btn-takeall" onclick="takeAllItems()">全部拾取</button>
+                    <button class="sort-btn" onclick="sortBackpack()" style="font-size:10px;padding:6px 10px;">📦 整理背包</button>
+                    <button class="btn-close" onclick="closeSearch()">✕ 关闭</button>
+                </div>
+            </div>
+            <!-- Ultimate reveal flash overlay -->
+            <div id="ultimateRevealFlash" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:145;opacity:0;background:radial-gradient(circle,rgba(255,50,0,0.3),transparent 70%);"></div>
+            <!-- RIGHT: Container -->
+            <div class="search-panel" style="flex:1;">
+                <h3><span id="searchContainerName">武器箱</span><span class="panel-subtitle">已揭示 <span id="searchRevealCount" style="color:#ff9800;">0/0</span></span></h3>
+                <div class="search-grid" id="containerGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== Result Screen ====== -->
+    <div id="resultScreen">
+        <div class="result-container">
+            <h1 class="result-title" id="resultTitle">撤离成功</h1>
+            <div class="result-stats">
+                <div class="stat-row"><span class="stat-label">行动结果</span><span class="stat-val" id="resultStatus">成功撤离</span></div>
+                <div class="stat-row"><span class="stat-label">击杀敌人</span><span class="stat-val" id="resultKills">0</span></div>
+                <div class="stat-row"><span class="stat-label">存活时间</span><span class="stat-val" id="resultTime">00:00</span></div>
+                <div class="stat-row"><span class="stat-label">搜索容器</span><span class="stat-val" id="resultSearched">0</span></div>
+                <div class="stat-row"><span class="stat-label">带出物资总价值</span><span class="stat-val highlight" id="resultValue">₵ 0</span></div>
+                <div class="loot-section"><div class="loot-title">带出物资清单</div><div class="loot-list" id="lootList"></div></div>
+            </div>
+            <div class="result-buttons">
+                <button class="result-btn secondary" onclick="backToLobby()">返回大厅</button>
+                <button class="result-btn primary" onclick="restartGame()">再次行动</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="map/military_base.js"></script>
+    <script src="map/industrial_port.js"></script>
+    <script src="map/forest_outpost.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

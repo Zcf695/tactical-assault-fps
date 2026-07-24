@@ -1,0 +1,22 @@
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Context / Analytics
+.context/
+
+# Hermes plans
+.hermes/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
