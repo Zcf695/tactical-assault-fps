@@ -1,0 +1,37 @@
+# 统一换行符：仓库内一律 LF，检出时按平台转换。
+#
+# 为什么需要：Windows 下 core.autocrlf 默认行为会把 LF 变成 CRLF，
+# 于是每改一行都可能触发「整文件被重写」的 diff，review 时看不出真实改动量。
+# 更糟的是二进制文件（.glb）被当文本转换会直接损坏模型。
+* text=auto eol=lf
+
+# ---- 文本 ----
+*.js      text eol=lf
+*.mjs     text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.txt     text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# ---- 二进制：绝不转换 ----
+*.glb     binary
+*.gltf    binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.webp    binary
+*.gif     binary
+*.mp3     binary
+*.ogg     binary
+*.wav     binary
+*.ttf     binary
+*.woff    binary
+*.woff2   binary
+*.bundle  binary
+
+# 生成的模型内联包：体积大、由 tools/inline-models.mjs 产出，
+# 在 diff 里展开没有意义（一行 base64 就是几 MB）。
+models_embedded.js -diff linguist-generated
