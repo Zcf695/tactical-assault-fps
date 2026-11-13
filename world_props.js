@@ -647,11 +647,18 @@ const WorldProps = (function () {
 
         const placed = [];
         // ---- 地图类型判定 ----
-        // 优先读地图数据里显式声明的 kind（military | industrial | forest）。
-        // 历史上这里只靠 name 正则判定，而森林图的名字是「密林禁区」，
-        // /森林|Forest|outpost/i 全部匹配失败 → 被当成军事基地，
-        // 导致树丛 9→3、零散树 26→8、灌木 34→10、岩石 20→8，森林图完全失去植被特征。
-        // 正则仅作为旧地图数据的兜底，已补上「密林/林地/林」与「港」。
+        // 【主判据】地图数据里显式声明的 kind（military | industrial | forest）。
+        //           game.js 会把整个 MAP_DATA 深拷贝，kind 随数据一起流动，无需额外传递。
+        //
+        // 【兜底：deprecated】下面两条正则只服务于「没有 kind 字段的旧地图数据」。
+        //   不要再往里加地图名。历史上这里只靠 name 正则判定，而森林图叫「密林禁区」，
+        //   /森林|Forest|outpost/i 全部匹配失败 → 被当成军事基地，
+        //   导致树丛 9→3、零散树 26→8、灌木 34→10、岩石 20→8，森林图完全失去植被特征。
+        //   根因不是正则写漏，而是「用中文显示名当语义标签」这个耦合本身：
+        //   ① 它驱动本文件里 13 处密度三元表达式，改文案就等于改玩法密度；
+        //   ② 道具布局的随机种子是 map.name 的哈希（见下方 seed 计算），
+        //      为了修正则去改 name，会让全部道具重新洗牌。
+        //   所以正则是 deprecated 兜底，新地图必须写 kind。tests/map-differences.mjs 锁定 kind 与 map.name。
         const kind = (map.kind || '').toLowerCase();
         const isPort = kind === 'industrial'
             || (!kind && /工业|港口|港|Port|industrial/i.test(name));

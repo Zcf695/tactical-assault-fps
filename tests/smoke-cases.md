@@ -3,7 +3,8 @@
 - **文档状态**：草案 v1.0（与 `tests/strategy.md` 配套）
 - **作者**：严守真（质量负责人 / QA Lead）· 2026-11-13
 - **基线 commit**：`ddf204a`
-- **用例总数**：12 条冒烟（SMK-01…12）+ 3 条事故回归（REG-01…03）
+- **用例总数**：14 条冒烟（SMK-01…12 + SMK-13/14）+ 3 条事故回归（REG-01…03）= **17 条**
+- **独立工具**：`tools/file-protocol-check.mjs`（file:// 路径，见 strategy.md §8.5）
 - **执行层级**：全部属于 L1 冒烟，**每次改动都跑**；预算 ≤ 6 分钟（全自动部分 ≤ 90 秒）
 
 ## 执行方式（已落地）
@@ -16,7 +17,9 @@ node smoke.mjs --headful            # 有头观察
 ```
 
 退出码：`0` 无 FAIL / `1` 有 FAIL / `2` 环境起不来。证据落 `tests/evidence/<YYYYMMDD-HHmmss>/`。
-**最近一次全量运行（2026-11-13）**：`PASS 14 / CONCERNS 1 / FAIL 0`，耗时 56.1s —— CONCERNS 项为 SMK-11 的 draw call（p50 1112 > 900）。
+**最近一次全量运行（2026-11-13 17 条版）**：`PASS 14 / CONCERNS 1 / FAIL 1`，**退出码 1（预期内的红）**。
+- FAIL：SMK-14 —— 降级置空 424 个材质的 normalMap，违反 2026-11-13 裁定（§7.4.5）；修法在 `performance_guard.js:91`，测试不等代码。
+- CONCERNS：SMK-11 draw call（军事禁区 1088 > 900 阶段一阈值）。
 
 ## 使用约定
 
@@ -41,7 +44,9 @@ node smoke.mjs --headful            # 有头观察
 | **SMK-08** | 3D 检视器 | SMK-02；背包内有物品 | 1. `InspectViewer.open('gpu')` 2. 等 900ms 3. 截检视面板 4. `InspectViewer.close()` | `InspectViewer.isOpen()===true`；检视面板 canvas 区域**非纯色**（取样像素方差 > 阈值，证明有模型渲染）；关闭后 `isOpen()===false`；关闭后 `S.phase` 不变 | [半自动] `isOpen()` 自动，非纯色需像素抽样自动判定 | 检视面板截图 |
 | **SMK-09** | 地图切换 | SMK-02（军事禁区） | 1. 记录当前 `MAP_DATA.name` 2. `selectMap('forest_outpost')` 3. `startGame()` 4. 等 3.5 秒 | `MAP_DATA.name==='密林禁区'`；三张地图往返后实体数均达下限（见明细）；`#gameHUD` 正常；旧场景已清理（`scene.children` 不随切换持续增长，±10%）；水量网格 ≥1 | [全自动] 断言 7 项 | 每图截图各 1 张 |
 | **SMK-10** | 撤离结算 | SMK-02；`S.lootValue>0` | 1. 记录 `P.money` 与 `S.lootValue` 2. `endGame(true)` 3. 读结果界面 | `S.phase==='gameover'`；`#gameHUD` display=none；`#resultScreen` 可见；`#resultTitle` 文本含「撤离成功」；`#resultValue` 数字 === 结算前 `S.lootValue`；`P.money` 增加 === `S.lootValue`；`P.stats.extracts` +1 | [全自动] 断言 8 项 | 结算界面截图 |
-| **SMK-11** | 性能基线 | SMK-02；URL `?perfdebug=1`（**不得带 `?perf=off`**） | 1. 进图后静置 1.5s 2. 采样 8s（丢弃前 2s 预热）3. 读 `window.__perfFrame` 与降级状态 | JS 单帧 `p50 ≤ 8ms`（实测 4.6）/ `p90 ≤ 16ms`；draw call `p50 ≤ 900`（实测 1112 → CONCERNS），`>1200` FAIL；最大单帧按 js/render 归因，**js 独占**才判 FAIL；采样期发生降级 → CONCERNS | [半自动] 采集自动，真机结论需人工 | `SMK-11.json` + `qa-snapshot.json` |
+| **SMK-11** | 确定性性能指标 | SMK-02；`?perfdebug=1` | 三图各 `selectMap`+`startGame`，静置 3.2s 后采样 1.5s，取多帧最大值 | draw call 三图最大值 ≤900（阶段一）；program ≤40；js 只做三图**相对比较**、不判定 | [半自动] 采集自动，真机结论需人工 | `SMK-11.json` |
+| **SMK-13** | 首局 draw call（初始化顺序） | SMK-02 开局 0–1.2s 已采样 | 读 `ctx.state.firstGameCalls` | ≤1500（正常 ≈1077；原缺陷 3523） | [全自动] | `SMK-13.json` |
+| **SMK-14** | 低画质降级不拆材质 | **干净页面 `?perf=off`** 开局 | 1. 记录材质状态 2. `forceLevel(3)` 3. 再记录 | albedo 置空数 = 0；**normalMap 消失数 = 0（FAIL 级）**；program 数不增加 | [半自动] 数值自动 + 截图人工 | `SMK-14_level3_降级后.png` |
 | **SMK-12** | 控制台零报错 | SMK-01→SMK-10 全程开启捕获 | 全程监听 `console`/`pageerror`/`requestfailed` | `errors===0`；`warnings===0`；`requestfailed` 仅允许 `favicon.ico`；不得出现关键词 `[WorldProps] 道具生成失败`、`Loading error`、`Cannot read`、`is not a function` | [全自动] 断言 4 项 | `SMK-12_console.log`（error+warn 全量） |
 | **REG-01** | 事故① 道具生成数量 | SMK-02 | 1. 读 `mapEnvironmentGroup.userData.worldPropsPlaced` 与各实体数组 | `propsPlaced.length ≥ 100`（军事禁区实测 128、密林 127）；`worldPropsRejects` 存在且含 `bounds/building/water/spawn/overlap` 键；`containers ≥ 100`（实测 170）；`groundLootItems ≥ 10`（实测 17–26）；**任一为 0 直接 FAIL** | [全自动] 断言 6 项，**每次改动必跑** | `REG-01_*.probe.json` |
 | **REG-02** | 事故② 材质 UV 平铺 | SMK-02 | 1. 取 `mapEnvironmentGroup.children[0]`（地面）2. 遍历 `geometry.attributes.uv` 求 X 跨度 3. 用 `MAP_DATA.mapSize / 5.5` 算期望（**mapSize 从 MAP_DATA 读，不写死**） | UV 跨度 === `mapSize / 5.5`（三图均为 300/5.5 = **54.55**，容差 ±2）；跨度 <5 视为「整块地面只采样一张贴图」FAIL；`_pbrUV===true`；`material.map !== null` | [全自动] 断言 6 项，**实测 54.55 === 期望，PASS** | `REG-02.json` + 地面截图 |
@@ -290,7 +295,42 @@ endGame(true);
 
 **当前判定：draw call p50 1112 → CONCERNS**（目标值由工程侧合批整改后给出，届时收紧到 ≤600）。JS 侧 p50 4.6ms 远低于预算，事故③ 未复发。
 
-REG-03 额外判定：交战态（把 3 个敌人挪到玩家 12m 内）JS p50 ≤ `max(8, 空场 p50 × 2)`，且 js 最大 ≤ 100ms。若敌人数增加导致 JS 近似线性上升 → 怀疑视线/碰撞退化为逐网格射线递归，按 **P0** 处理。
+REG-03 额外判定：交战态（把 3 个敌人挪到玩家 12m 内）JS p50 ≤ `max(12ms, 空场 p50 × 3)`，p90 ≤ 33ms，js 最大 ≤ 100ms。
+
+实测交火成本：空场 p50 **3.7ms** → 3 敌贴近 **8.8ms**（+5.1ms），p90 17.4ms，js 最大 39.6ms。**属可接受量级**，事故③ 是 399ms/帧，差一个数量级。
+阈值口径说明：初版写的是「空场 × 2」，直接被 +5.1ms 的正常 AI 开销打到 FAIL ——**退化的判据是量级变化，不是 2 倍**。若真出现 LOS 退化为逐网格射线递归，会看到 100ms+ 量级，仍然会被这条抓住。
+
+若敌人数翻倍导致 JS 近似线性上升（如 14 敌贴近 > 40ms），按 **P1** 处理并复查 `hasLineOfSight` 是否仍在走解析几何。
+
+### SMK-13 首局 draw call（初始化顺序防回归）
+
+```js
+// 在 SMK-02 里采样（开局 0–1.2s，每 150ms 一次，取 max）：未合批窗口只出现在最初几帧
+{ firstGameCalls }  // 期望 ≤1500；修复后 ≈1077；缺陷态 3523
+```
+
+**为什么单独一条**：`rebuildMapEnvironment()` 若跑在 `GraphicsEnhancement.init()` 之前，`isEnabled()` 为 false → `batchStatic` 被跳过 → **整局**以 1.1 万个未合批网格渲染。这类退化不会报错、不会黑屏，只会让所有机器一起变卡。实测已从 3,523 降到 1,077（工程侧已修）。
+
+### SMK-14 低画质降级不得拆掉材质（美术底线）
+
+必须在**干净页面 + `?perf=off`** 上测：主场景此时早已自动降到 level 4，`forceLevel(3)` 会因 `if (n <= _level) return` 变成空操作——首版就是这么「假通过」的。
+
+```js
+const p2 = await ctx.newGamePage('?perf=off');
+startGame; wait 4s;                       // 等材质升级完成
+before = probeMaterialState();
+forceLevel(3); wait 1.5s;
+after = probeMaterialState();
+```
+
+实测（level 0 → 3）：
+
+| 观测 | 结果 | 判定 |
+|---|---|---|
+| `normalMap` 被置空的材质数 | **424** | **FAIL**（2026-11-13 已裁定：禁止置空 normalMap，理由见 strategy.md §7.4.5） |
+| shader program 数 | **20 → 39（+95%）** | **shader 重编译确认**，art 的判断成立 |
+| `material.map`（albedo）被置空 | 0 | 正常 |
+| 降级后仍有 normalMap 的材质 | 0（单材质网格全被清） | — |
 
 ### REG-01 事故① 道具生成数量（每次改动必跑）
 

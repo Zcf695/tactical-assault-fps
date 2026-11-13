@@ -107,7 +107,11 @@ const PerformanceGuard = (function () {
             if (typeof RenderPipeline !== 'undefined' && RenderPipeline.setResolutionScale) RenderPipeline.setResolutionScale(0.55);
             const dust = _scene.getObjectByName('dustParticles');
             if (dust) dust.visible = false;
-            if (_scene.fog) _scene.fog.far = Math.min(_scene.fog.far, 120);
+            // 远景缩短交给 RenderPipeline 处理（相对缩放 far *= 0.6），
+            // 不再在这里写 `fog.far = Math.min(fog.far, 120)`。
+            // 原因：绝对上限会把三张地图的雾距抹平成同一个 120，把刚做的地图差异化又合上了。
+            // 交给管线还有一个好处：每次切图 _syncFog 都会重算，避免「降级时正在显示的那张图永久受害」。
+            if (typeof RenderPipeline !== 'undefined' && RenderPipeline.refreshFog) RenderPipeline.refreshFog();
         }
 
         _toast(n >= 3 ? '已切换到性能模式（低画质）' : '帧率较低，已自动降低画质');

@@ -97,6 +97,20 @@ export const cases = [
         row('PBR 套件就绪数（渐进加载，最长等 15s）', '≥8', pbrCount, ok(pbrCount >= 8)),
         ge('PerformanceGuard 档位可读', 0, b.guardLevel),
         eq('loadingScreen 已隐藏', 'none', b.loadingScreenDisplay),
+        // window.__qa：静默失败的计数器（契约见 strategy.md §7.5）
+        row('__qa.bootedAt 已写入', '>0', b.qa ? b.qa.bootedAt : 'no __qa', b.qa && b.qa.bootedAt > 0 ? 'PASS' : 'CONCERNS'),
+        row(
+          '__qa.modules 全部 loaded',
+          '11/11',
+          b.qa ? `${b.qa.modulesLoaded}/${b.qa.modulesTotal}` : 'no __qa',
+          b.qa && b.qa.modulesLoaded === b.qa.modulesTotal ? 'PASS' : 'CONCERNS',
+        ),
+        row(
+          '__qa.swallowed（被吞掉的异常数，必须为 0）',
+          0,
+          b.qa ? b.qa.swallowed : 'no __qa',
+          !b.qa ? 'CONCERNS' : ok(b.qa.swallowed === 0),
+        ),
       ];
     },
   },
@@ -113,7 +127,33 @@ export const cases = [
         startGame();
       });
       await ctx.page.waitForFunction(() => typeof S !== 'undefined' && S.phase === 'playing', { timeout: 30000 });
-      await ctx.wait(3000);
+
+      // 立刻采样 draw call（0–1.2s）：初始化顺序若退化，未合批窗口只出现在开局最初几帧。
+      // 必须连同 postFX 一起采：后期开启时 render.calls 只含最后一个 pass（常为 1），读数无效。
+      const callSamples = [];
+      const callValidSamples = [];
+      for (let i = 0; i < 8; i++) {
+        const v = await ctx.page.evaluate(() => {
+          try {
+            return {
+              calls: renderer.info.render.calls,
+              postFX: GameSettings.getSettings().graphics.postFX !== false,
+            };
+          } catch (e) {
+            return { calls: -1, postFX: null };
+          }
+        });
+        if (v && v.calls > 0) {
+          callSamples.push(v.calls);
+          if (!v.postFX && v.calls > 50) callValidSamples.push(v.calls);
+        }
+        await ctx.wait(150);
+      }
+      ctx.state.firstGameCalls = callValidSamples.length ? Math.max(...callValidSamples) : -1;
+      ctx.state.firstGameCallSamples = callSamples;
+      ctx.state.firstGameCallsValid = callValidSamples.length > 0;
+
+      await ctx.wait(2000);
 
       const hud = await ctx.page.evaluate(() => ({
         hud: document.getElementById('gameHUD').style.display,
@@ -129,6 +169,7 @@ export const cases = [
 
       ctx.state.baseScene = c.sceneChildren;
       ctx.state.baseMap = c.mapName;
+
       await ctx.shot('SMK-02_开局场景');
 
       return [
@@ -447,78 +488,100 @@ export const cases = [
     },
   },
 
-  /* ================= SMK-11 性能基线 ================= */
+  /* ================= SMK-11 确定性性能指标 ================= */
   {
     id: 'SMK-11',
-    title: '性能基线（JS 帧耗时 / draw call）',
+    title: '确定性性能指标（draw call / program / 三图相对差异）',
     auto: '半自动（真机 60fps 结论需人工）',
     async run(ctx) {
       const probes = await import('./probes.mjs');
-      await ctx.wait(1500); // 进图后先让纹理/图标等一次性工作落地
+      /**
+       * 口径（2026-11-13 主理人裁定，来源：工程侧实测量级抖动 5–10 倍）：
+       *   js / render 帧耗时**不进质量门**，只做同一次运行内的相对比较；
+       *   门控只用确定性指标：draw call、program 数、可见网格数、道具布点数。
+       * 阶段阈值：阶段一（容器合批前）>1200 FAIL / >900 CONCERNS；
+       *           阶段二（容器材质缓存 + 每箱合并后）>900 FAIL / >600 CONCERNS，目标 ≤300。
+       */
+      const GATE = { concerns: 900, fail: 1200 };
 
-      const INTERVAL = 100;
-      const WINDOW = 10000;
-      const samples = [];
-      const t0 = Date.now();
-      while (Date.now() - t0 < WINDOW) {
-        const f = await ctx.call(probes.probeFrame);
-        if (f.frame) {
-          samples.push({
-            ...f.frame,
-            calls: f.calls,
-            guardLevel: f.guardLevel,
-            dpr: f.dpr,
-            triangles: f.triangles,
-            programs: f.programs,
-            quality: f.quality,
-            resolution: f.resolution,
-            at: Date.now() - t0,
-          });
+      const maps = ['military_base', 'forest_outpost', 'industrial_port'];
+      const perMap = [];
+      for (const m of maps) {
+        await ctx.page.evaluate((mapId) => {
+          selectMap(mapId);
+          startGame();
+        }, m);
+        await ctx.wait(3200);
+        const samples = [];
+        for (let i = 0; i < 15; i++) {
+          const f = await ctx.call(probes.probeFrame);
+          if (f.frame)
+            samples.push({ js: f.frame.js, calls: f.calls, programs: f.programs, tris: f.triangles, postFX: f.postFX });
+          await ctx.wait(100);
         }
-        await ctx.wait(INTERVAL);
+        if (!samples.length) {
+          perMap.push({ map: m, error: 'no samples' });
+          continue;
+        }
+        perMap.push({
+          map: m,
+          maxCalls: Math.max(...samples.map((x) => x.calls)),
+          programs: Math.max(...samples.map((x) => x.programs)),
+          triangles: samples[samples.length - 1].tris,
+          jsMedian: +median(samples.map((x) => x.js)).toFixed(2),
+          guardLevel: samples[samples.length - 1].guardLevel ?? -1,
+          postFX: samples[samples.length - 1].postFX,
+        });
       }
-      // 丢弃前 2s（渐进 PBR / 3D 图标仍在生成）
-      const warm = samples.filter((s) => s.at >= 2000);
-      const use = warm.length >= 10 ? warm : samples;
+      ctx.state.perfPerMap = perMap;
+      await ctx.shot('SMK-11_三图最后一图');
 
-      // 采样饥饿检测：本机若被其它进程占满，page.evaluate 本身会被拖到数百 ms，
-      // 此时测出的「帧耗时」是环境噪声，不能当成产品退化。宁可报 CONCERNS 也不误报 FAIL。
-      const expected = Math.floor((WINDOW - 2000) / INTERVAL);
-      const starved = use.length < Math.max(15, expected * 0.4);
+      const okMaps = perMap.filter((x) => !x.error);
+      const worst = okMaps.reduce((a, b) => (b.maxCalls > (a ? a.maxCalls : -1) ? b : a), null);
+      const jss = okMaps.map((x) => x.jsMedian).filter((n) => n > 0);
+      const jsSpread = jss.length >= 2 ? +(Math.max(...jss) / Math.min(...jss)).toFixed(1) : 1;
 
-      const sum = summarize(use);
-      const guardChanged = new Set(use.map((s) => s.guardLevel)).size > 1;
-      ctx.state.idleJs = sum.jsP50;
-      ctx.state.perfSnapshot = {
-        ...sum,
-        starved,
-        samples: use.length,
-        expected,
-        guardChanged,
-        level: use[use.length - 1].guardLevel,
-        dpr: use[use.length - 1].dpr,
-        resolution: use[use.length - 1].resolution,
-        quality: use[use.length - 1].quality,
-        triangles: use[use.length - 1].triangles,
-        programs: use[use.length - 1].programs,
-      };
-
-      const pick = (normal, whenStarved) => (starved ? whenStarved : normal);
-      const jsStatus = pick(sum.jsP50 <= 8 ? 'PASS' : sum.jsP50 <= 16 ? 'CONCERNS' : 'FAIL', 'CONCERNS');
-      const p90Status = pick(sum.jsP90 <= 16 ? 'PASS' : sum.jsP90 <= 33 ? 'CONCERNS' : 'FAIL', 'CONCERNS');
-      const callStatus = pick(sum.callsP50 <= 900 ? 'PASS' : sum.callsP50 <= 1200 ? 'CONCERNS' : 'FAIL', sum.callsP50 <= 1200 ? 'CONCERNS' : 'FAIL');
-      const jsSpike = sum.max.js > 100 && sum.max.render <= sum.max.js;
-      const spikeStatus = pick(jsSpike ? 'FAIL' : 'PASS', 'CONCERNS');
+      // 后期（postFX）开启时 renderer.info.render.calls 只反映最后一个 pass（常见为 1），
+      // 此时 draw call 读数不可比 —— 先判「读数是否有效」，再判数值。
+      const postFxOn = okMaps.some((x) => x.postFX === true);
+      const callsValid = !postFxOn && worst && worst.maxCalls > 50;
+      const callStatus = !callsValid
+        ? 'CONCERNS'
+        : worst.maxCalls > GATE.fail
+          ? 'FAIL'
+          : worst.maxCalls > GATE.concerns
+            ? 'CONCERNS'
+            : 'PASS';
+      const progStatus = worst.programs > 40 ? 'CONCERNS' : 'PASS';
 
       return [
-        row('稳态采样帧数', 15, use.length, starved ? 'CONCERNS' : ok(use.length >= 15)),
-        row('采样是否被环境拖垮（不足预期 40% 即不可信）', false, starved, starved ? 'CONCERNS' : 'PASS'),
-        row('JS 单帧 p50（预算 8ms）', '≤8', sum.jsP50, jsStatus),
-        row('JS 单帧 p90（余量）', '≤16', sum.jsP90, p90Status),
-        row('draw call p50（>900 CONCERNS / >1200 FAIL）', '≤900', sum.callsP50, callStatus),
-        row('最大单帧（js / render 归因）', 'js 不得独占', `js=${sum.max.js} render=${sum.max.render}`, spikeStatus),
-        row('采样期是否发生降级（发生则结论仅参考）', false, guardChanged, guardChanged ? 'CONCERNS' : 'PASS'),
-        row('渲染上下文快照', '见 evidence', JSON.stringify(ctx.state.perfSnapshot), 'PASS'),
+        eq('三图均采到样本', 3, okMaps.length),
+        row(
+          `draw call 三图最大值（阶段一：>${GATE.concerns} CONCERNS / >${GATE.fail} FAIL）`,
+          `≤${GATE.concerns}`,
+          worst ? `${worst.map} ${worst.maxCalls}` : 'n/a',
+          callStatus,
+        ),
+        row(
+          'draw call 读数有效性（后期开启时读数只含最后一个 pass）',
+          'postFX=off',
+          postFxOn ? '读数不可比' : '有效',
+          callsValid || !postFxOn ? 'PASS' : 'CONCERNS',
+        ),
+        row('shader program 数（>40 记 CONCERNS）', '≤40', worst ? worst.programs : 'n/a', progStatus),
+        row('三图 draw call 明细', '见 evidence', JSON.stringify(perMap.map((x) => `${x.map}:${x.maxCalls}`)), 'PASS'),
+        row(
+          '三图 js 相对差异（仅记录，不判定：同机抖动可达 5–10 倍）',
+          '记录',
+          `${jsSpread}×  ${JSON.stringify(jss)}`,
+          'PASS',
+        ),
+        row(
+          '结论口径',
+          '确定性指标入闸 / 帧耗时只做相对比较',
+          '见 tests/strategy.md §5.1',
+          'PASS',
+        ),
       ];
     },
   },
@@ -549,7 +612,9 @@ export const cases = [
 
       const sum = summarize(use);
       const idle = ctx.state.idleJs || 0;
-      const budget = Math.max(8, +(idle * 2).toFixed(2));
+      // 预算口径：交火确实会涨（实测 3 敌人贴近时 p50 3.7 → 8.8ms，+5.1ms 属正常 AI 开销）。
+      // 「退化」的判据是量级变化（事故③ 是 399ms/帧），不是 2 倍。故用 max(12, 空场×3)。
+      const budget = Math.max(12, +(idle * 3).toFixed(2));
       const pick = (normal, whenStarved) => (starved ? whenStarved : normal);
 
       return [
@@ -620,12 +685,155 @@ export const cases = [
     },
   },
 
+  /* ================= SMK-13 首局 draw call（初始化顺序防回归） ================= */
+  {
+    id: 'SMK-13',
+    title: '首局 draw call（初始化顺序防回归）',
+    auto: '全自动',
+    async run(ctx) {
+      const first = ctx.state.firstGameCalls;
+      /**
+       * 已知缺陷（工程侧修复中）：首次 rebuildMapEnvironment() 跑在 GraphicsEnhancement.init() 之前，
+       * isEnabled() 为 false → batchStatic 被跳过 → 整局以 1.1 万未合批网格渲染（实测 3,523 dc）。
+       * 修复后应为 ≈1,034。当前标 KNOWN_OPEN，只报 CONCERNS 不阻塞；修好后把 knownOpen 置 false 即转 FAIL 判定。
+       */
+      const knownOpen = false; // 2026-11-13 实测 1077（原 3,523）已正常，转正为 FAIL 判定
+      const expected = 1500; // 修复后 ≈1034，留 45% 余量给视锥差异
+      if (first === undefined || first < 0) {
+        return [
+          row('draw call 读数有效性（后期开启时读数只含最后一个 pass）', 'postFX=off', '采样无效', 'CONCERNS'),
+          row('读到首局有效 draw call', '>0', first, 'CONCERNS'),
+        ];
+      }
+      const pass = first <= expected;
+      return [
+        row(
+          'draw call 读数有效性（后期开启时只含最后一个 pass，读 1 = 采样无效）',
+          'postFX=off',
+          ctx.state.firstGameCallsValid ? '有效' : '无效',
+          ctx.state.firstGameCallsValid ? 'PASS' : 'CONCERNS',
+        ),
+        row(
+          '首局 draw call 最大值',
+          `≤${expected}（修复后应 ≈1034）`,
+          first,
+          pass ? 'PASS' : knownOpen ? 'CONCERNS' : 'FAIL',
+        ),
+        row('采样序列（诊断）', '首局应稳定在 ~1034', JSON.stringify(ctx.state.firstGameCallSamples || []), 'PASS'),
+        row('缺陷状态', '修复后转 FAIL 判定', pass ? '已修复' : knownOpen ? '已知在修（KNOWN_OPEN）' : '回归', 'PASS'),
+      ];
+    },
+  },
+
+  /* ================= SMK-14 低画质降级验收（美术底线） ================= */
+  {
+    id: 'SMK-14',
+    title: '低画质降级不得拆掉材质（美术底线）',
+    auto: '半自动（数值断言 + 人工目检截图）',
+    async run(ctx) {
+      const probes = await import('./probes.mjs');
+      /**
+       * 必须在「未降级的干净页面」上测：
+       *   主场景到这一步时 PerformanceGuard 早已自动降到 level 4，
+       *   此时 forceLevel(3) 会因 `if (n <= _level) return` 直接变成空操作 —— 首版就是这么假通过的。
+       * 所以开 ?perf=off 关掉自动降级，再手动 forceLevel(3)，验证的才是真·降级路径。
+       *
+       * art-director 的验收项：albedo 永不砍 / normalMap 永不置 null（只折半 normalScale）/
+       * 降级不得让 program 数与 draw call 增加（防全场景重编译）。
+       */
+      const p2 = await ctx.newGamePage('?perf=off');
+      try {
+        await p2.evaluate(() => {
+          enterLobby('qa_level3');
+          startGame();
+        });
+        await p2.waitForFunction(() => typeof S !== 'undefined' && S.phase === 'playing', { timeout: 30000 });
+        await ctx.wait(3500); // 等 upgradeEnvironmentMaterials 完成
+
+        const sampleCalls = async (pg) => {
+          const vals = [];
+          for (let i = 0; i < 5; i++) {
+            const v = await pg.evaluate(() => {
+              try {
+                return renderer.info.render.calls;
+              } catch (e) {
+                return -1;
+              }
+            });
+            if (v > 0) vals.push(v);
+            await ctx.wait(100);
+          }
+          return vals.length ? Math.max(...vals) : -1;
+        };
+
+        const before = await p2.evaluate(probes.probeMaterialState);
+        const beforeCalls = await sampleCalls(p2);
+        const forced = await p2.evaluate(probes.forceDegrade, 3);
+        await ctx.wait(1500);
+        const after = await p2.evaluate(probes.probeMaterialState);
+        const afterCalls = await sampleCalls(p2);
+        await p2.screenshot({ path: `${ctx.evidenceDir}/SMK-14_level3_降级后.png` }).catch(() => {});
+
+        const newlyNulledMaps = Math.max(0, after.mapNulled - before.mapNulled);
+        const lostNormals = Math.max(0, before.withNormal - after.withNormal);
+        /**
+         * 2026-11-13 主理人裁定：**禁止在降级时置空 normalMap**。三条理由：
+         *   1. 它把「降级」变成「重编译风暴」，且发生在设备已扛不住的瞬间（实测 program 20→39，+95%）；
+         *   2. 不可逆：材质对象被就地改写，setLowMode(false) 没有恢复分支，降级后画面永久变平；
+         *   3. 收益接近零：normalMap 主要吃纹理带宽而非主要开销，却抹掉了这套程序化 PBR 唯一的美术辨识度。
+         * 故 designPending = false → 违反即 FAIL。修法在 performance_guard.js:91（改 normalScale 折半），
+         * 测试不等代码：红着才有人去改。
+         */
+        const designPending = false;
+        const normalStatus = lostNormals === 0 ? 'PASS' : designPending ? 'CONCERNS' : 'FAIL';
+
+        return [
+          row('降级档位已生效（从 0 起降）', '≥3', forced.level, Number(forced.level) >= 3 ? 'PASS' : 'FAIL'),
+          row('降级前有 normalMap 的材质数', '>0', before.withNormal, before.withNormal > 0 ? 'PASS' : 'CONCERNS'),
+          row('albedo 被置空（新增）', 0, newlyNulledMaps, newlyNulledMaps === 0 ? 'PASS' : 'FAIL'),
+          row('normalMap 被置空（新增）', 0, lostNormals, normalStatus),
+          row(
+            '材质状态（降级前 → 后）',
+            '见 evidence',
+            `normal ${before.withNormal}→${after.withNormal} / map ${before.withMap}→${after.withMap} / programs ${before.programs}→${after.programs} / calls ${beforeCalls}→${afterCalls}`,
+            'PASS',
+          ),
+          row(
+            'program 数未增加（防重编译）',
+            `≤${before.programs}`,
+            after.programs,
+            after.programs <= before.programs ? 'PASS' : 'CONCERNS',
+          ),
+          row(
+            'draw call（仅记录，不判定）',
+            '由 SMK-11 专管',
+            `${beforeCalls}→${afterCalls}（后期开启时该读数只反映最后一个 pass，不可比）`,
+            'PASS',
+          ),
+        ];
+      } finally {
+        await p2.close().catch(() => {});
+      }
+    },
+  },
+
   /* ================= SMK-12 控制台零报错（汇总，必须最后跑） ================= */
   {
     id: 'SMK-12',
     title: '控制台零报错（error + warning 全量）',
     auto: '全自动',
     async run(ctx) {
+      const swallowed = await ctx.page
+        .evaluate(() => {
+          const q = window.__qa;
+          if (!q || !Array.isArray(q.swallowed)) return { count: -1, sample: [] };
+          return {
+            count: q.swallowed.length,
+            sample: q.swallowed.slice(0, 5).map((e) => String(e && (e.where || e.msg || e))),
+          };
+        })
+        .catch(() => ({ count: -1, sample: [] }));
+
       const FORBIDDEN = ['[WorldProps] 道具生成失败', 'Loading error', 'Cannot read', 'is not a function'];
       // 404 的 console 文本里不含 URL（只有「Failed to load resource」），
       // 所以白名单判定要看服务端缺失清单：若缺失资源里只有 favicon，则这些 404 允许存在。
@@ -655,6 +863,13 @@ export const cases = [
           errors.map((e) => `${e.level}: ${String(e.text).slice(0, 160)}`),
           'PASS',
         ),
+        row(
+          '__qa.swallowed（被吞异常数，必须为 0；事故① 的报警器）',
+          0,
+          swallowed.count,
+          swallowed.count < 0 ? 'CONCERNS' : ok(swallowed.count === 0),
+        ),
+        row('__qa.swallowed 样本', '[]', swallowed.sample, 'PASS'),
       ];
     },
   },

@@ -15,15 +15,18 @@ var MAP_DATA_FOREST = {
     containerCount: { normal: 180, hard: 240 },
 
     theme: {
-        groundColor: 0x3a6a38,
+        // ===== 以下数值来自 design/art/art-data-tables.md 表 A（定稿），勿自行调整 =====
+        // 表 A 派生验收值：uZenith #45778d (H198 S35 L41) / uHorizon #b0b9a3 (H84 S13 L68)
+        //                半球光地面色 #214022    雾距 40-175（三图中最闷，密林潜行基调）
+        groundColor: 0x2f5c30,
+        skyColor: 0x8fd0c0,
+        fogColor: 0x9ec0b4,
+        fogNear: 40,
+        fogFar: 175,
         // 地面 PBR 贴图种类：密林以草地为底
         groundSurface: 'grass',
         // 屋顶女儿墙颜色：哨站/研究站为苔绿偏暗的金属顶
-        roofColor: 0x414a42,
-        skyColor: 0x87ceeb,
-        fogColor: 0xa8d8e8,
-        fogNear: 45,
-        fogFar: 195,
+        roofColor: 0x36402f,
         roadColor: 0x4a4538,
         waterColor: 0x2a7a9a,
         treeColor: 0x1a5a1a,

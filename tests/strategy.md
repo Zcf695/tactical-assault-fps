@@ -16,6 +16,15 @@
 
 ---
 
+## 0.5 三条铁律（2026-11-13 两次误判后立）
+
+| # | 铁律 | 来由 |
+|---|---|---|
+| **① 只有确定性指标才配做门** | 同一提交、同一机器上会抖 5–10 倍的读数（headless 软渲染下的 `js`/`render` 帧耗时）不能当验收依据。门控只用 `renderer.info.render.calls`、`programs.length`、可见网格数、`worldPropsPlaced.length` 这类**同输入同输出**的量。帧耗时只做**同一次运行内的相对比较**。 | 工程侧实测：军事 12→7.2ms、森林 24.9→44.4ms、港口 5.1→56.7ms |
+| **② 偶发失败先怀疑测试环境，再怀疑产品** | 测试自己也会说谎。SMK-08「检视器偶发无反应」查了半天是敌人打断了设计行为；REG-03「交火退化」是我阈值定成了 2 倍。**每次报缺陷前先问：环境、时序、前置条件有没有问题。** | 3 次自我纠错 |
+| **③ 断言必须绑在可控的运行时状态上** | 期望值不许来自源码字面量（`CONFIG.mapSize` 默认 110），不许依赖「本该如此」的时序（雾距只在 level<4 时成立），不许用会被后续 pass 覆盖的读数（postFX 开启时 `render.calls` 只含最后一个 pass，读 1 = 采样无效）。 | REG-02 假阳性（110 vs 300）、雾距误报、draw call 读数陷阱 |
+| **④ 验证「降级」必须从干净页面起** | `PerformanceGuard.forceLevel(n)` 在 `n <= _level` 时是**空操作**。在已经降到 level 4 的主场景里「再降到 3」，验证的是空气——SMK-14 首版就这么**假通过**过一次。所有 `PerformanceGuard` 相关用例强制以 `?perf=off` 起手（关自动降级，保留手动 `forceLevel` 能力）。 | SMK-14 假通过 |
+
 ## 1. 质量对象：6 条不变量（Invariants）
 
 所有门槛最终折算到这 6 条。用例不是随便写的，每条用例都是为了守住其中一条。
@@ -102,18 +111,31 @@
 
 ### 5.1 预算表
 
-| 指标 | 采集方式 | 目标（60fps） | 底线（30fps，可玩） | 备注 |
-|---|---|---|---|---|
-| 单帧总耗时 | `window.__perfFrame.total` | ≤ 16.6 ms | ≤ 33.3 ms | 需 `?perfdebug=1` |
-| **单帧 JS 耗时** | `window.__perfFrame.js` | **≤ 8 ms** | ≤ 16 ms | 事故 3 时为 399 ms；这是**与画质无关**的部分，降画质救不了 → 硬指标 |
-| 渲染耗时 | `window.__perfFrame.render` | ≤ 16 ms | ≤ 30 ms | 真机 GPU 才有意义；headless 为软渲染 |
-| draw calls | `renderer.info.render.calls`（p50） | ≤ 600（整改目标） | ≤ 900（**>900 CONCERNS / >1200 FAIL**） | 实测 p50 1112，已超 900 线（见 §5.3） |
-| program 数 | `renderer.info.programs.length` | 记录趋势 | 记录趋势 | 着色器编译是长帧常见来源，必须随 count 一起进证据 |
-| 三角面 | `renderer.info.render.triangles` | ≤ 500k | ≤ 900k | 当前实测 370k（军事禁区） |
-| 长帧 | 采样期内 `total > 100ms` 的次数 | ≤ 1 次 / 5 分钟 | ≤ 3 次 | 加载/切图期排除 |
-| 堆内存 | `performance.memory.usedJSHeapSize` | ≤ 400 MB | ≤ 700 MB | 连开 3 局后测，观察泄漏 |
-| 加载到可交互 | `loadingScreen` 消失到 `startGame` 可点 | ≤ 6 s | ≤ 12 s | 含 5 个加载阶段 |
-| 单次场景重建 | `rebuildMapEnvironment` 耗时 | ≤ 400 ms | ≤ 800 ms | 切图/重开局时 |
+**门控指标（确定性，进闸）**
+
+| 指标 | 采集方式 | 目标 | CONCERNS | FAIL | 备注 |
+|---|---|---|---|---|---|
+| draw calls | `renderer.info.render.calls`，**取多帧最大值** | ≤300（整改目标） | >600（阶段二）/ >900（阶段一） | >900（阶段二）/ >1200（阶段一） | 阶段一=容器合批前，阶段二=容器材质缓存+每箱合并后 |
+| shader program 数 | `renderer.info.programs.length` | ≤20 | >40 | — | 突增说明着色器排列变化 / 重编译风暴 |
+| 可见网格数 | `mapEnvironmentGroup` 可见对象数 | ≤300 | >600 | >1200 | 合批是否生效的直接证据 |
+| 道具布点数 | `userData.worldPropsPlaced.length` | ≥100 | — | 0（事故① 复发） | 内容量不变量 |
+| 首局 draw call | 开局 0–1.2s 多帧最大值 | ≤1500（≈1077） | — | >1500 | 防「首次建图跑在合批之前」退化（原 3,523，已修） |
+| 控制台/吞异常 | `console` + `window.__qa.swallowed` | 0 | — | >0 | 静默失败的唯一计数器 |
+
+**记录项（不判定，只做同次运行内相对比较）**
+
+| 指标 | 说明 |
+|---|---|
+| `__perfFrame.js` / `render` | headless SwiftShader 下同机抖动 5–10 倍，**不可跨运行比较、不可入闸**。只记录三图之间的相对差异（同一运行内）。 |
+| 三角面 | 记录（当前 370k，远低于预算，不是瓶颈） |
+| dpr / 分辨率 / 画质档 | 判定的前提条件，必须随证据落盘 |
+
+**人工指标（真机，每周一次）**
+
+| 指标 | 方法 |
+|---|---|
+| 60fps / 30fps | 核显笔记本，记录 GPU 型号 + 分辨率 + dpr + 三图各 30 秒均值。**headless 数字不作结论。** |
+| 视觉质量 | 固定两机位截图存档（地面近景：眼高 1.5m / 俯角 35° / 距地 2m；地面远景：眼高 1.7m / 俯角 0° / 视线掠至 40m 外） |
 
 ### 5.2 测量纪律
 
@@ -121,6 +143,9 @@
 2. **必须声明是否触发降级**。同时记录 `PerformanceGuard.getLevel()`、`renderer.getPixelRatio()`、`GameSettings.getSettings().graphics.quality`。在 level≥3 且 resolutionScale 0.55 下测出的「可玩」，不代表默认画质可玩。
 3. **`?perf=off` 下测得的性能数字一律作废**（该参数直接关闭性能守卫）。
 4. **headless 数字只作相对基线**：SwiftShader 软渲染的 render 耗时不代表核显。
+5. **`renderer.info.render.calls` 在后期开启时只含最后一个 pass**（常见读数为 1）。因此 draw call 断言必须先判「读数是否有效」：读 `GameSettings.getSettings().graphics.postFX`，为 true 时该读数不可比。想拿确定性计数，用 `renderer.info.autoReset=false → reset() → 手动 render 一帧 → 读值`。
+6. **`PerformanceGuard.forceLevel(n)` 在已达更高档位时是空操作**（`if (n <= _level) return`）。要验证「降级对我们做了什么」，必须开一个 `?perf=off` 的干净页面从 level 0 起降——否则测的是「什么都没发生」，会假通过（SMK-14 首版就这么骗过我一次）。
+7. **多帧最大值而非单帧**：视锥剔除会让单帧 draw call 波动（面向墙 vs 面向空地能差一个数量级）。
 
 ### 5.3 实测基线（2026-11-13，供后续对比）
 
@@ -128,7 +153,7 @@
 
 | 指标 | 实测值 | 判定 |
 |---|---|---|
-| `__perfFrame.js` **p50** | **4.6 ms** | PASS（预算 8ms） |
+| `__perfFrame.js` **p50** | **3.7–4.6 ms**（多次采样区间） | PASS（预算 8ms） |
 | `__perfFrame.js` p90 / p99 | 10.5 / 42.1 ms | p90 PASS |
 | 最大单帧 | js 156ms / render 304ms | 归因 render（软渲染），非 JS 退化 |
 | draw calls p50 | **1112**（区间 1050–1150） | **CONCERNS（>900）** |
@@ -286,6 +311,18 @@ page.on('requestfailed', r => log('REQFAIL', r.url()));
 
 **建议（需工程侧配合，我不改产品代码）**：在 `init()` 末尾挂一个只读诊断对象 `window.__qa = { bootedAt, modules: {...}, content: {...}, exec: {...} }`，并让 8 处空 `catch` 至少写入 `window.__qa.swallowed.push({where, msg})`。这样「静默」这个物种就从系统里消失了。在未接入前，本策略用投影探针（§7.2 B/C）替代，已可覆盖三起事故。
 
+### 7.4.5 已裁定：低画质**禁止**置空 `normalMap`（2026-11-13）
+
+主理人裁定，`performance_guard.js:91` 的 `m.normalMap = null` 属缺陷。三条理由任一即成立：
+
+1. **它把「降级」变成「重编译风暴」，且发生在最糟的时刻**：实测 program 20 → 39（+95%），设备已经扛不住时再去编译 19 个新程序 → 体感从「卡」变「卡死几秒」。
+2. **不可逆**：材质对象被就地改写，`setLowMode(false)` 没有恢复分支，降级后画面永久变平，只能重开一局。
+3. **收益接近零**：normalMap 主要吃纹理带宽而非主要开销，却是这套程序化 PBR 唯一的美术辨识度来源。
+
+**执行状态**：
+- 测试侧：`SMK-14` 的 `designPending = false`，**违反即 FAIL**。当前实测 424 个材质 normalMap 被置空 → **SMK-14 FAIL，L1 门控转红（预期内的红）**。
+- 工程侧：改法为「`normalScale × 0.5`，不置 null」（改 uniform 不触发重编译），由工程侧执行；**测试不等代码，红着才有人去改**。
+
 ### 7.5 `window.__qa` 诊断契约（已批准，由工程侧实现，QA 只定义与断言）
 
 **目的**：把「静默」变成「有计数器」。三起事故里有两次是因为「事情没做成，但系统没有任何地方记录」。
@@ -336,10 +373,19 @@ window.__qa = {
 
 **harness 读取方式**：`cases.mjs` 的 SMK-01 / REG-01 优先读 `window.__qa`；字段缺失时自动回退到现有全局投影（`composedFallback`），所以**接口没实现也不影响门控**，只是少了归因信息。每次运行的 `qa-snapshot.json` 会记录 `source: "window.__qa" | "composed-fallback"`。
 
-**验收（工程侧交付时我按这三条验）**
-1. 断网/无存档冷启动后，`__qa.bootedAt` 有值且 `modules` 12 项齐全。
-2. 故意在 `WorldProps.apply` 里 throw，`__qa.swallowed` 必须出现一条且含 `where`；同时 SMK-12 关键词仍能命中。
-3. `__qa` 不得被游戏逻辑读取或修改（`rg '__qa' game.js` 只应出现在写入点与注释）。
+**验收（工程侧交付时我按这三条验，2026-11-13 已验收通过）**
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| 1 | 冷启动后 `__qa.bootedAt` 有值、`modules` 齐全 | ✅ `bootedAt` 有值，`modules` 11/11 全 true（断言在 SMK-01） |
+| 2 | 注入 throw 后 `__qa.swallowed` 有记录且含 `where` | ✅ 工程侧已实现 `reportInitError(where, err, {once})`（按 where 去重 + 计数），并额外暴露 `window.__initErrors` 别名 |
+| 3 | `__qa` 不被游戏逻辑读取或修改 | ✅ `rg '__qa' *.js` 只有写入点与 getter 定义，无任何读取分支 |
+
+**实现备注（两处与契约的差异，均不影响使用）**
+- `bootedAt` 实际取的是 **script 解析时刻**（`Date.now()`），不是 `init()` 完成时刻。若要衡量「启动耗时」需另加 `readyAt`；当前仅用于「有没有启动过」。
+- `swallowed` 是 `__initErrors` 数组的 getter（`Object.defineProperty`），支持热路径去重。测试侧只读长度与前 3 条样本，不写。
+
+**这条对门控的意义**：SMK-12 现在多了一条 `__qa.swallowed === 0`。事故① 那种「异常被 try/catch 吞掉、界面完全正常」的情形，从此会在每次冒烟里报出来——**这是整套测试里性价比最高的一条断言**。
 
 ---
 
@@ -354,6 +400,52 @@ window.__qa = {
 | 目标硬件 | 核显笔记本（Intel Iris Xe 级）→ 60fps；低端/软件渲染 → 30fps 可玩 |
 | 运行方式 | 双击 `index.html`（`file://`）或本地静态服务；**两路都要测**，因为 `file://` 下 fetch/XHR 行为不同 |
 | 真机手测频率 | 每周 ≥ 1 次，必须人工（headless 数字不作结论） |
+
+### 8.1.1 真机帧率人工采样口径（规格，由工程侧提出）
+
+> 背景：headless SwiftShader 的 js 耗时**跨运行差 5–10 倍**（同一提交实测：密林 4.8 → 9.5ms、
+> 港口 5.4 → 11ms），因此该指标已退出质量门，只作同次运行内的相对比较。
+> 真机帧率不进自动化，改为「结构化人工采样」——关键是把环境变量一并记下来，否则数字之间不可比。
+
+**采样前必须记录的环境元数据（缺一项则本次数据作废）**
+
+| 字段 | 取值方式 | 示例 |
+|---|---|---|
+| 采集时间 | ISO 8601 | `2026-11-13T17:20+08:00` |
+| GPU 型号 | `chrome://gpu` → Graphics Feature Status 顶部 Device | `NVIDIA GeForce GTX 1650` / `Intel Iris Xe Graphics` |
+| GPU 类别 | 独显 / 核显 / 软件渲染 | 软件渲染（SwiftShader）时**不采集**，直接标 `N/A-software` |
+| 驱动版本 | `chrome://gpu` → Driver Version | `31.0.101.4502` |
+| 浏览器 + 版本 | `chrome://version` | `Chrome 141.0.7390.66` |
+| OS + 版本 | Win + 内部版本号 | `Windows 11 24H2 (26100)` |
+| 窗口分辨率 | `innerWidth × innerHeight` | `1440×810` |
+| 设备像素比 | `devicePixelRatio` | `1.5` |
+| 实际渲染 dpr | 控制台 `RenderPipeline.getStats().dpr` | `0.85`（自适应降级后） |
+| 降级级别 | 控制台 `PerformanceGuard.getLevel()` | `0`（未降级才是有意义的性能数据） |
+
+**采样流程（每张地图独立执行一遍）**
+
+1. 冷启动：关闭浏览器全部标签后重开，`file://` 直开（不用静态服务，避免缓存差异）。
+2. 进图后**静置 10 秒**（跳过 shader 编译与贴图惰性生成，这 10 秒不计入统计）。
+3. 打开 `?perfdebug=1&perf=off`（关掉自动降级，否则测的是降级后的画面，不同机器不可比）。
+4. 采集 **30 秒**：`window.__perfFrame` 的 `fps`/`js`/`render`/`calls`，每 5 秒记一次，共 6 个点。
+5. 30 秒内**必须包含一次交火**（≥3 个敌人在 15m 内开火）与**一次开镜**——只测空场会高估性能。
+6. 记录 6 个点的 p50 与 p95；**p95 比 p50 更能反映顿挫**。
+
+**判定口径**
+
+| 指标 | 通过线 | 依据 |
+|---|---|---|
+| 平均 FPS（p50） | 核显 ≥ 60；低端 ≥ 30 | 交付目标 |
+| 1% low / p95 帧时间 | ≤ 2 × p50 帧时间 | 顿挫可感知阈值 |
+| draw calls | ≤ 600（目标 ≤ 300） | 与自动化门一致 |
+| 是否触发降级 | 必须为 `level 0` | 触发降级说明该硬件不在目标档 |
+
+**已知必须单列排查的现象**
+
+> `js` 的 **p90 达 110–140ms，而中位数只有 5–11ms**（密林/港口，headless 实测）。
+> 双峰分布说明存在**周期性的百毫秒级 JS 卡顿**，玩家会感到顿挫。这不是阈值问题，是真问题。
+> 候选原因：`PBRTextures` 惰性生成、shader 首次编译、`drawFullMap` 每帧重绘、掉落/空投批量逻辑。
+> **在真机采样时请同时记录 p95 与最大帧时间**，用来确认这个尖峰在 GPU 环境下是否同样存在。
 
 ### 8.2 自动化执行方式（已落地）
 
@@ -400,6 +492,38 @@ node smoke.mjs --headful            # 有头观察
 | `check2..check10.js`、`shadow1-6`、`texprobe`、`raycheck` 等 40+ 个 | **归档不迁移**；结论已并入用例（UV / 阴影 / 材质 / 射线部分），代码无复用价值 |
 
 **迁移后仍然依赖项目外路径的只剩一件事**：Chromium 二进制缓存在 `%LOCALAPPDATA%/ms-playwright`。这是浏览器本体，不属于测试资产；换机时用 `QA_CHROME` 指向任意 Chrome 即可。
+
+## 8.5 `file://` 双击直开路径实测（P0，2026-11-13）
+
+README 第一句承诺「直接双击 `index.html` 用浏览器打开即可游玩」。实测结论：**承诺破产（静默降级）**。
+
+工具：`node tests/harness/tools/file-protocol-check.mjs`（**故意不加** `--allow-file-access-from-files`，模拟用户双击）
+
+| 检查项 | 实测 |
+|---|---|
+| 1. `enemyModels` 键数量 | **0**（期望 3） |
+| 2. 敌人占位体 | **14/14** 全是 `ph_placeholder` 圆柱体（`userData.placeholder === true`） |
+| 3. console | `Access to XMLHttpRequest ... blocked by CORS policy` × 3（Soldier/Xbot/RobotExpressive）+ `net::ERR_FAILED` |
+| 4. `window.__initErrors` | **0 条** —— 异步加载失败不经过 `assertCriticalModules`，完全静默 |
+| 5. 截图 | `tests/evidence/*-fileproto/` — 敌人是**无贴图米色圆柱**，无头无手无枪 |
+
+**根因**：`game.js:1907` `loadEnemyModels()` 用 `THREE.GLTFLoader().load()`（底层 XHR），
+Chrome/Edge 在 `file://` 下默认拒绝本地文件 XHR；且 `loader.load()` 只传 `onLoad`、**没有 `onError`** → 失败无声。
+
+**处置建议（交工程侧，需主理人拍板）**
+1. 补 `onError` → 写入 `__initErrors`（让静默失效变成可查）；
+2. `file:` 协议下在前 3 秒内弹出**可见提示**：「请用本地服务器打开（`npx serve`），否则敌人模型无法加载」；
+3. README 首句改写，或提供 `start.bat` 一键起本地服务——**别再让用户走一条注定降级的路**。
+
+**处置状态（2026-11-13 主理人裁定，三步走）**
+
+| 步骤 | 状态 | 归属 |
+|---|---|---|
+| ① `onError` → `__initErrors`（一行） | **立即执行**——「静默」本身就是缺陷，与最终选哪个方案无关；同时覆盖「服务器上 GLB 404」这类线上事故 | 工程侧 |
+| ② `file:` 协议下的可见提示层 | **暂停**，等用户对产品承诺拍板 | 待定 |
+| ③ README 首句改写 / `start.bat` | **暂停**，同上 | 待定 |
+
+**门控状态**：目前是独立工具（不进 L1），因为需要第二个浏览器会话且修法未定。②③ 定案后升级为 L1 用例 `FILE-01`（判定：`enemyModels` 键数 === 3，或出现显式降级提示）。
 
 ## 9. 追溯与流程纪律
 
@@ -453,6 +577,6 @@ node smoke.mjs --headful            # 有头观察
 2. **音频**：音效正确性无法自动判定，只能断言 `AudioEngine` 存在 + 无异常。
 3. **7 种 BOSS 全流程**：仅覆盖「能生成、能交战」，未覆盖各 BOSS 阶段转换与掉落。
 4. **254 件自定义收集品**：3D 模型/图标只做抽样（当前抽 12 个图标，实测 4 个及时就绪）。
-5. **`file://` 直开路径**：现有脚本全部走 HTTP，双击打开这一真实用户路径未自动覆盖。
+5. **`file://` 直开路径**：已实测（见 §8.5），**承诺破产** —— 三个 GLB 全被 CORS 拦，敌人退化为圆柱占位体且零报错。目前是独立工具，未入门控。
 6. **多标签页 / 存档并发**。
 7. **移动端与触屏**（不在当前平台基线内，明确排除）。

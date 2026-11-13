@@ -718,3 +718,68 @@ map/military_base.js   |  734 +--
 - `game.js:682-847`（SFX：`playTone` / `playNoise` / `sfxShoot` / `sfxHit` / `sfxReload` …）与 `audio_engine.js`（`AudioEngine.play(name, opts)` / `startAmbient`）是两套并行的音频实现。README 声称「程序化音频引擎」，实际上 gameplay 走的是 `game.js` 里那套简单的 `playTone`。
 - `graphics_enhancement.js` 的后期链与 `render_pipeline.js` 的后期链重叠（§9-#1）。
 - 三张地图各有一个 `.bak` 文件（未跟踪，`map/*.js.bak`），与主文件同目录，容易误读。
+
+---
+
+## 11. 协作与提交纪律
+
+> 本节由主理人拍板，2026-11 基线建立后生效。适用于所有以「工作区」为产出的成员。
+> 背景：S1 止血时发现，三个月的工作产出（23 个模块）从未进过版本库；而止血提交完成后的几分钟内，
+> 工作区又因为多人并行写盘重新变脏。下面三条规定是那次教训的直接产物。
+
+### 11.1 提交权收归一人
+
+**只有技术负责人（engineering-lead）执行 `git commit`。** 其他成员只写盘、不提交。
+
+理由：多人并行 `commit` 会产生交错的半成品历史，且无法保证每次提交前都跑过校验。写盘可以并行，提交必须串行。
+
+### 11.2 每次 commit 前必跑三条
+
+```bash
+# ① 语法：全部非 vendor 的 JS 必须通过
+for f in $(git ls-files -co --exclude-standard '*.js' | grep -v '^vendor/'); do node --check "$f" || exit 1; done
+
+# ② 地图数据与渲染契约（纯 Node，秒级）
+node tests/map-differences.mjs --fast
+
+# ③ 玩法数值平衡（当前预期 exit 1，只记录不阻塞——它是设计锚点，不是代码缺陷）
+node tests/balance-sim.mjs --check --state=current
+```
+
+> **禁止为了让 ③ 变绿去改脚本里的目标值。** 顶级配装 8–15 局是设计锚点；改测试等于把体温计泡热水里。
+
+完整模式 `node tests/map-differences.mjs`（含浏览器性能门，约 4 分钟）在合并到 `master` 前跑一次即可。
+
+### 11.3 比对基线看 commit，不看 `git status`
+
+**工作区「干净」的状态只有几分钟寿命**——多人并行写盘时，`git add -A` 之后队友再落盘就会立刻产生新的未版本化改动。
+
+因此：
+- 「有没有丢东西」要比对 **commit**（`git log` / `git show --stat` / `git rev-list --left-right --count origin/master...master`），不看 `git status`。
+- 判断「某次改动是否已入库」用 `git log -S'<关键字>'` 或 `git show <commit>:<path>`，不看文件是否存在。
+- `git status` 只用于「这次我要提交什么」。
+
+### 11.4 里程碑离线 bundle 制度
+
+**每次 `push` 成功后，紧接着生成一份离线 bundle：**
+
+```bash
+git bundle create ../tactical-assault-<里程碑名>-<YYYYMMDD>.bundle --all
+git bundle verify ../tactical-assault-<里程碑名>-<YYYYMMDD>.bundle
+```
+
+保留最近 **3 份**，放项目目录之外（第二块盘 / 网盘）。
+
+理由（不是洁癖，是实测）：
+1. **本机出网不稳定**。S1 止血时第一次 `git push` 报 `schannel: server closed abruptly (missing close_notify)`，但 ref 其实已更新；随后 3 次重试全部被环境代理返回 `502 CONNECT`。「现在能推」不能推导「以后能推」。
+2. **`git push` 的返回码不可信**，要用 `git ls-remote --heads --tags origin` 核实远端实际状态。
+3. **bundle 只包含 commit，不包含工作区**。所以它只保护「已提交」的部分——这也从反面说明为什么 11.1/11.2 必须执行。
+
+### 11.5 一个已验证的例外：`kind` 字段偏离了主理人指令
+
+主理人最初要求「改 `world_props.js` 的 `isForest` 正则，加上『密林』」。实际落地时改成了
+**地图数据里的显式 `kind` 字段作为主判据，正则降级为 deprecated 兜底**。偏离的理由已在
+`world_props.js` 的注释里写明（显示名驱动 13 处密度分支 + 道具种子是 `map.name` 的哈希）。
+主理人复核后保留该偏离，并明确：**这类情况以成员文档为唯一事实源，主理人的消息只做优先级与口径，不做数据搬运。**
+
+适用于以后的判断：**当「照字面执行指令」与「修掉根因」冲突时，可以偏，但必须（1）满足原验收判据（2）在代码里写清理由（3）主动上报让对方复核。**

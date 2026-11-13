@@ -33,6 +33,12 @@ const argv = process.argv.slice(2);
 const headful = argv.includes('--headful');
 const onlyArg = argv.find((a) => a.startsWith('--only='));
 const only = onlyArg ? onlyArg.slice('--only='.length).split(',').map((s) => s.trim()) : null;
+// 门控自检：故意让指定用例失败，用来验证「失败真的会让退出码变 1」。
+// 不测测试本身，等于不知道警报器会不会响。
+// 单用例超时：SMK-14 要开第二个页面（冷启动 15–25s），45s 在负载机上不够
+const CASE_TIMEOUT_MS = Number(process.env.QA_CASE_TIMEOUT_MS || 90000);
+const faultArg = argv.find((a) => a.startsWith('--fault-inject='));
+const faultInject = faultArg ? faultArg.slice('--fault-inject='.length).split(',').map((s) => s.trim()) : [];
 
 function stamp() {
   const d = new Date();
@@ -66,7 +72,21 @@ async function main() {
   fs.mkdirSync(evidenceDir, { recursive: true });
 
   const t0 = Date.now();
-  const selected = cases.filter((c) => !only || only.includes(c.id));
+
+  // --only 模式下自动补前置：除 SMK-01 外，所有用例都要求已经进入行动阶段（SMK-02）。
+  // 否则会把「没开局」误报成用例失败——测试依赖必须显式化，不能靠记忆。
+  const needsGameplay = (id) => id !== 'SMK-01' && id !== 'SMK-02';
+  let selected;
+  const setupIds = [];
+  if (only) {
+    selected = cases.filter((c) => only.includes(c.id));
+    if (selected.some((c) => needsGameplay(c.id)) && !only.includes('SMK-02')) {
+      setupIds.push('SMK-02');
+      selected = [cases.find((c) => c.id === 'SMK-02'), ...selected];
+    }
+  } else {
+    selected = cases;
+  }
 
   let server = null;
   let game = null;
@@ -108,8 +128,26 @@ async function main() {
         consoleLog: game.consoleLog,
         missing: server.missing,
         state: sharedState,
+        baseUrl: `${server.url}/index.html`,
+        evidenceDir,
         wait: sleep,
         call: (fn, ...args) => page.evaluate(fn, ...args),
+        // 需要「干净页面」的用例用这个（例如要在未降级的画质档上验证降级行为）
+        newGamePage: async (query = '') => {
+          const p2 = await page.context().newPage();
+          p2.on('console', (m) => {
+            const t = m.type();
+            if (t === 'error' || t === 'warning') game.consoleLog.push({ t: 0, level: t, text: m.text() });
+          });
+          p2.on('pageerror', (e) => game.consoleLog.push({ t: 0, level: 'pageerror', text: e.message }));
+          p2.on('dialog', (d) => d.dismiss().catch(() => {}));
+          await p2.goto(`${server.url}/index.html${query}`, { waitUntil: 'load', timeout: 90000 });
+          await p2.waitForFunction(
+            () => typeof RenderPipeline !== 'undefined' && typeof startGame === 'function' && typeof S !== 'undefined',
+            { timeout: 90000 },
+          );
+          return p2;
+        },
         shot: async (name) => {
           shotSeq++;
           const file = path.join(evidenceDir, `${name}.png`);
@@ -128,16 +166,27 @@ async function main() {
         // 单用例硬超时，避免某条卡住把整轮拖死
         assertions = await Promise.race([
           c.run(ctx),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('用例超时 45s')), 45000)),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`用例超时 ${CASE_TIMEOUT_MS}ms（可用 QA_CASE_TIMEOUT_MS 调整）`)), CASE_TIMEOUT_MS),
+          ),
         ]);
       } catch (e) {
         error = e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : String(e);
         assertions = [{ name: '用例执行未抛异常', expected: 'no throw', actual: error, pass: 'FAIL' }];
       }
       const durationMs = Date.now() - started;
-      const verdict = error ? 'FAIL' : worstStatus(assertions);
+      const isSetup = setupIds.includes(c.id);
+      let verdict = error ? 'FAIL' : worstStatus(assertions);
+      if (faultInject.includes(c.id)) {
+        faultInject.includes(c.id);
+        assertions = [
+          ...assertions,
+          { name: '门控自检（--fault-inject）', expected: '正常', actual: '强制失败', pass: 'FAIL' },
+        ];
+        verdict = 'FAIL';
+      }
 
-      results.push({ id: c.id, title: c.title, auto: c.auto, verdict, durationMs, assertions, error });
+      results.push({ id: c.id, title: c.title, auto: c.auto, verdict, durationMs, assertions, error, setup: isSetup });
 
       fs.writeFileSync(
         path.join(evidenceDir, `${c.id}.json`),
@@ -146,7 +195,7 @@ async function main() {
       );
 
       const mark = verdict === 'PASS' ? '✔' : verdict === 'CONCERNS' ? '!' : '✘';
-      console.log(`${mark} ${c.id} ${c.title}  (${durationMs}ms)  ${verdict}`);
+      console.log(`${mark} ${c.id} ${c.title}  (${durationMs}ms)  ${verdict}${isSetup ? '  [前置]' : ''}`);
 
       if (verdict !== 'PASS') {
         for (const a of assertions.filter((x) => x.pass !== 'PASS')) {
@@ -184,9 +233,10 @@ async function main() {
       'utf8',
     );
 
-    const failed = results.filter((r) => r.verdict === 'FAIL');
-    const concerns = results.filter((r) => r.verdict === 'CONCERNS');
-    const passed = results.filter((r) => r.verdict === 'PASS');
+    const counted = results.filter((r) => !r.setup);
+    const failed = counted.filter((r) => r.verdict === 'FAIL');
+    const concerns = counted.filter((r) => r.verdict === 'CONCERNS');
+    const passed = counted.filter((r) => r.verdict === 'PASS');
     const totalMs = Date.now() - t0;
 
     const run = {
@@ -198,7 +248,7 @@ async function main() {
         viewport: '1440x810',
         url: '/index.html?perfdebug=1',
       },
-      summary: { total: results.length, passed: passed.length, concerns: concerns.length, failed: failed.length },
+      summary: { total: counted.length, passed: passed.length, concerns: concerns.length, failed: failed.length, setup: results.filter((r) => r.setup).map((r) => `${r.id}:${r.verdict}`) },
       cases: results.map((r) => ({
         id: r.id,
         title: r.title,
@@ -215,7 +265,7 @@ async function main() {
     console.log('');
     console.log('──────────────────────────────────────────────────────────');
     console.log(
-      `总计 ${results.length} 条：PASS ${passed.length} / CONCERNS ${concerns.length} / FAIL ${failed.length}   ` +
+      `总计 ${counted.length} 条：PASS ${passed.length} / CONCERNS ${concerns.length} / FAIL ${failed.length}   ` +
         `耗时 ${(totalMs / 1000).toFixed(1)}s`,
     );
     if (concerns.length) {

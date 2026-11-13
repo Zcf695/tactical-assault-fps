@@ -33,7 +33,10 @@ node tests/harness/smoke.mjs
 node smoke.mjs --headful              # 有头运行，观察用
 node smoke.mjs --only=SMK-03          # 只跑一条
 node smoke.mjs --only=SMK-02,SMK-11   # 跑多条第
+node smoke.mjs --only=SMK-05 --fault-inject=SMK-05   # 门控自检：强制失败，验证退出码变 1
 ```
+
+> `--fault-inject` 是给「测试的测试」用的：改完 harness 或 CI 接线后，用它确认**失败真的会让流水线红**，而不是只有打印。
 
 ## 浏览器
 
@@ -71,9 +74,17 @@ tests/harness/
   cases.mjs        15 条用例（SMK-01…12 + REG-01…03），与 tests/smoke-cases.md 对齐
   smoke.mjs        运行器：顺序、超时、证据、汇总、退出码
   tools/
-    map-baseline.mjs  三张地图内容量基线采集（维护用例阈值用）
-    perf-trace.mjs    逐帧 JS 耗时追踪（定位单帧尖峰归因，事故③ 的排查方法）
+    map-baseline.mjs     三张地图内容量基线采集（维护用例阈值用）
+    perf-trace.mjs       逐帧 JS 耗时追踪（定位单帧尖峰归因，事故③ 的排查方法）
+    file-protocol-check.mjs  file:// 双击直开路径实测（P0，见 strategy.md §8.5）
 ```
+
+## 两条环境纪律（不写下来，三个月后一定有人拿 SwiftShader 的数字当验收依据）
+
+1. **性能用例要求独占机器。** 有别的进程抢 CPU 时，采样帧数会掉到预期的 20%（实测 12/70），
+   此时 `run.json` 的 `perf.starved` 会标出来，相关断言自动降级为 CONCERNS。**换空闲机器重跑。**
+2. **headless 的 render 数字不代表核显。** 60fps/30fps 只能人工采样：记录 GPU 型号 + 分辨率 + dpr + 三图各 30 秒均值。
+   而且同一台机器上 `js` 会抖 5–10 倍（军事 12→7.2 / 森林 24.9→44.4 / 港口 5.1→56.7），**帧耗时只做同次运行内的相对比较**。
 
 ## 维护约定
 
@@ -91,8 +102,9 @@ tests/harness/
 ## 最近一次运行
 
 ```
-总计 15 条：PASS 14 / CONCERNS 1 / FAIL 0   耗时 56.1s
-CONCERNS：SMK-11 draw call p50 1104–1118（预算 ≤900；>1200 才 FAIL）
+总计 17 条：PASS 15 / CONCERNS 2 / FAIL 0   耗时 92.3s
+CONCERNS：SMK-11 draw call（军事禁区 1088，阶段一阈值 >900 记 CONCERNS）
+          SMK-14 低画质置空 normalMap（424 个材质，program 20→39；美术底线争议待裁定）
 退出码 0
 ```
 

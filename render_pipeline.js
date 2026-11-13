@@ -680,6 +680,12 @@ const RenderPipeline = (function () {
             if ('outputEncoding' in _renderer) _renderer.outputEncoding = THREE.sRGBEncoding;
 
             _buildSky();
+            // 注意：这里必须同时应用主题光照。setTheme() 的完整路径是
+            // _buildSky → _applyLighting → _syncFog → _bakeEnvironment，
+            // 而 init() 曾经漏掉 _applyLighting —— 结果「首局」用的是 setupLights() 的
+            // 素色灯光，只有切过一次地图才会变成主题光照。同一张地图因为「有没有切过图」
+            // 呈现两种布光，这是纯 bug，不是风格。
+            _applyLighting();
             _syncFog();
             _bakeEnvironment();
             _buildComposer();
@@ -724,18 +730,43 @@ const RenderPipeline = (function () {
         }
     }
 
+    /**
+     * 是否处于性能守卫的最高降级级（4 级）：此时需要缩短远景。
+     * 只做读取，不改变守卫状态。
+     */
+    function _isExtremeLow() {
+        try {
+            return typeof PerformanceGuard !== 'undefined' && PerformanceGuard.getLevel() >= 4;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function _syncFog() {
         if (!_scene) return;
         const c = _theme || {};
         const fogColor = new THREE.Color(c.fogColor != null ? c.fogColor : 0xa8d0e0);
         const horizon = fogColor.clone().lerp(new THREE.Color(0xffcf9e), 0.30).multiplyScalar(0.94).convertSRGBToLinear();
-        // 尊重每张地图的雾配置（森林 45/195、军事 55/205、港口 65/235）。
+        // 尊重每张地图的雾配置。数值来源：design/art/art-data-tables.md 表 A（定稿）
+        //   军事禁区 80/260 · 密林禁区 40/175 · 港口城市 95/290
         // 历史实现是 Math.max(c.fogNear || 50, 65) / Math.max(c.fogFar || 160, 235)，
-        // 把三张图的雾距统一抬成 65/235 —— 地图的 fog 配置全部失效，三图空气透视一模一样，
-        // 森林图「密林迷雾」的潜行氛围完全丢失。这里只保留「far 必须明显大于 near」的安全约束，
-        // 不再设绝对下限；雾距是地图设计参数，应由地图数据决定。
+        // 把三张图的雾距统一抬成 65/235 —— 地图的 fog 配置全部失效，三图空气透视一模一样。
+        // 表 A 的「前置」要求把这个硬下限放宽，否则密林的 40/175 会被抬成 65/235 且与港口重合。
+        // 现在仅保留「far 必须明显大于 near」的退化保护，不设任何绝对下限。
         const near = c.fogNear != null ? c.fogNear : 50;
-        const far = Math.max(c.fogFar != null ? c.fogFar : 160, near + 40);
+        let far = Math.max(c.fogFar != null ? c.fogFar : 160, near + 40);
+
+        // 性能守卫 4 级降级：缩短远景，但用「相对缩放」而不是绝对上限。
+        // 曾经的做法是在 performance_guard.js 里写 `fog.far = Math.min(fog.far, 120)`，
+        // 那会把三张图又抹平成同一个 120 —— 我们刚花一整轮把它们的雾距分开
+        // （260 / 175 / 290），不能在降级路径里再合上。
+        // 相对缩放保留差异：260→156 / 175→105 / 290→174，同时确实缩短了远景。
+        // 放在 _syncFog 里而不是守卫里，是为了让「每次切图」都重新求值，
+        // 否则 4 级降级触发时正在显示的那张图会永久受害（守卫只降不升）。
+        if (_isExtremeLow()) {
+            far = Math.max(near + 20, far * 0.6);
+        }
+
         if (!_scene.fog) {
             _scene.fog = new THREE.Fog(horizon, near, far);
         } else {
@@ -744,6 +775,15 @@ const RenderPipeline = (function () {
             _scene.fog.far = far;
         }
         if (_renderer) _renderer.setClearColor(horizon, 1);
+    }
+
+    /**
+     * 供 performance_guard 在降级瞬间调用：让雾距立刻按当前守卫级别重算。
+     * 不暴露 _syncFog 本身，避免外部绕过主题缓存。
+     */
+    function refreshFog() {
+        if (!_enabled || !_scene) return;
+        try { _syncFog(); } catch (e) { /* 渲染管道不允许因雾距失败而中断 */ }
     }
 
     function onResize() {
@@ -863,6 +903,7 @@ const RenderPipeline = (function () {
         setLowMode,
         setResolutionScale,
         clearResolutionFloor,
+        refreshFog,
         isEnabled,
         getStats,
         onResize,

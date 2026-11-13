@@ -275,6 +275,7 @@ if (m.envMapIntensity > 0.1) { m.envMapIntensity = 0.1; dirty = true; }
 
 **四条反对理由**
 
+0. **已实测（质量侧 SMK-14，干净页面 level 0 → 3）**：一次降级被置空 `normalMap` 的材质 **424 个**；shader program **20 → 39（+95%）**；`material.map` 被置空 **0 个**。第 2 条与第 3 条由实测坐实，非推测。
 1. **几乎不省性能。** `normalMap` 是 1 次纹理采样。实测瓶颈是 draw call（1050）与填充率，不是纹理带宽——砍它对批次毫无帮助。
 2. **反而制造卡顿。** `normalMap = null` + `needsUpdate` 触发**每个材质的 shader 重编译**，而且发生在机器已经掉帧的时刻，是最糟的时机。
 3. **抹掉的是美术定位本身。** 三关键词之二的「骨料质感」100% 来自 normalMap；12 套材质的 albedo 都只是低对比噪声。同时 `applyToMesh` 把 `roughness/metalness` 固定设 1.0 作为贴图乘子 → 表面会退化成**均匀全哑光**，连高光形状都丢失，等于把 PBR 降级成"印了花纹的墙纸"。
@@ -752,6 +753,9 @@ window.__perfFrame   // { js, render, calls, level }
 | **D12** | **搜索容器挂 `scene` 而非 `mapEnvironmentGroup`，完全逃出合批范围** | `game.js:5028` vs `game.js:2008` | 200 个容器 × 5.5 件 ≈ **1000 draw call**，占总量的 95%。实测 1050–1103 | 🔴 高 |
 | **D13** | **level≥3 降级把 `normalMap` 置 null、`envMapIntensity` 压到 0.1** | `performance_guard.js:87-88` | PBR 质感归零、触发全场景 shader 重编译（在掉帧时）。详见 §4.6 | 🔴 高 |
 | **D14** | 建筑立面纹素密度 1.56 cm/texel，为全场最粗（其余 0.86–1.25） | `graphics_enhancement.js:773` `tile: 4.0` | 立面发糊，与路面/掩体的质感不在一档。建议 `tile: 3.2`（§5.1.1） | 🟡 低 |
+| **D15** | **`scaleBoxUVs` 从不写 `_pbrGeoKind`**，只有 `scaleUVs` 写 | `pbr_textures.js:565` vs `:573-591` | 所有 BoxGeometry（建筑/路面/集装箱）无 kind 标签，纹素密度断言只能覆盖平面类。建议在 `applyToMesh` 层统一写 `_pbrTile/_pbrTileV/_pbrKind/_pbrRes`（**只在首次写，保留生效值**） | 🟠 中 |
+| **D16** | 文档漂移：注释写「军事=dirt、港口=concrete」 | `graphics_enhancement.js:861` | 实际为 gravel / asphalt；`'concrete'` 从来不是合法 `groundSurface`（合法集 gravel·grass·asphalt·dirt）。已导致质量侧误判一次。建议改从 `_groundKind` 变量插值 | 🟡 低 |
+| **D17** | warmup 列表硬编码已无地图使用的 `'dirt'` | `graphics_enhancement.js:868` | 白生成 3 张 256² 贴图 ≈ 1 MB 显存 + 生成耗时；清单已有 `_groundKind` 兜底 | 🟡 低 |
 
 ## 附录 B：需要用户拍板的美术方向
 

@@ -14,15 +14,19 @@ var MAP_DATA_INDUSTRIAL = {
     containerCount: { normal: 190, hard: 250 },
 
     theme: {
-        groundColor: 0x5a5850,
-        // 地面 PBR 贴图种类：港口/CBD 以混凝土硬地为主
-        groundSurface: 'concrete',
+        // ===== 以下数值来自 design/art/art-data-tables.md 表 A（定稿），勿自行调整 =====
+        // 表 A 派生验收值：uZenith #566a7f (H210 S19 L42) / uHorizon #d9c1a3 (H34 S41 L74)
+        //                半球光地面色 #3b3a35    雾距 95-290（三图中最通透，CBD 远景）
+        // 注意：groundSurface 'asphalt' 与路面同贴图，路/地靠「贴图平铺差」
+        //      （地 5.5 m vs 路 3.2 m）+ WorldProps.addRoadMarkings 的标线区分，不靠颜色对比。
+        groundColor: 0x55534c,
+        skyColor: 0xbcae9a,
+        fogColor: 0xdccdb4,
+        fogNear: 95,
+        fogFar: 290,
+        groundSurface: 'asphalt',
         // 屋顶女儿墙颜色：仓库与厂房多为深灰铁皮
-        roofColor: 0x3b3f45,
-        skyColor: 0x87ceeb,
-        fogColor: 0xa8d4e8,
-        fogNear: 65,
-        fogFar: 235,
+        roofColor: 0x424a55,
         roadColor: 0x4a4a42,
         waterColor: 0x2a6080,
         wallColor: 0x555555,

@@ -44,6 +44,21 @@ export function probeBoot() {
     pbrReady: safe(() => PBRTextures.kinds.filter((k) => PBRTextures.ready(k)), []),
     waterMeshes: safe(() => GraphicsEnhancement.getWaterMeshes().length, -1),
     guardLevel: safe(() => PerformanceGuard.getLevel(), -1),
+    // window.__qa 契约（tests/strategy.md §7.5）：已由工程侧实现，读不到时给 null
+    qa: safe(() => {
+      const q = window.__qa;
+      if (!q) return null;
+      const mods = q.modules || {};
+      return {
+        bootedAt: q.bootedAt || 0,
+        modulesLoaded: Object.values(mods).filter(Boolean).length,
+        modulesTotal: Object.keys(mods).length,
+        swallowed: Array.isArray(q.swallowed) ? q.swallowed.length : -1,
+        swallowedSample: Array.isArray(q.swallowed)
+          ? q.swallowed.slice(0, 3).map((e) => String(e && (e.where || e.msg || e)))
+          : [],
+      };
+    }, null),
   };
 }
 
@@ -407,6 +422,24 @@ export function probeFrame() {
       typeof GameSettings !== 'undefined' && GameSettings.getSettings
         ? GameSettings.getSettings().graphics.quality
         : null,
+    // 后期开启时 renderer.info.render.calls 只反映最后一个 pass（常见为 1），读数不可比。
+    // 强制前置：任何 draw call 断言必须先看 callsValid，read 到 1 一律判「采样无效」。
+    postFX: (() => {
+      try {
+        return GameSettings.getSettings().graphics.postFX !== false;
+      } catch (e) {
+        return null;
+      }
+    })(),
+    callsValid: (() => {
+      try {
+        const postFX = GameSettings.getSettings().graphics.postFX !== false;
+        // 后期开启 → 读数只含最后一个 pass；读数 ≤50 → 明显是 blit pass，不是场景总量
+        return !postFX && typeof calls === 'number' && calls > 50;
+      } catch (e) {
+        return false;
+      }
+    })(),
     enemies: typeof enemies !== 'undefined' ? enemies.length : -1,
   };
 }
@@ -427,6 +460,87 @@ export function moveEnemiesNear() {
   } catch (e) {
     return { moved: 0, error: String(e && e.message ? e.message : e) };
   }
+}
+
+/* ---------- SMK-14 降级验收：材质状态 ---------- */
+/**
+ * 统计「被降级改坏了什么」：albedo 是否被砍、normalMap 是否被置空、材质是否被触发重编译。
+ * 依据 art-director 的验收项：albedo 永不砍 / normalMap 永不置 null（只折半 normalScale）。
+ */
+export function probeMaterialState() {
+  let meshes = 0;
+  let withMap = 0;
+  let mapNulled = 0;
+  let withNormal = 0;
+  let normalNulled = 0;
+  const normalScaleSamples = [];
+  const seen = new Set();
+  try {
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m || seen.has(m.uuid)) continue;
+        seen.add(m.uuid);
+        meshes++;
+        if (m.map) withMap++;
+        else if (m.isMeshStandardMaterial) mapNulled++;
+        if (m.normalMap) {
+          withNormal++;
+          if (normalScaleSamples.length < 5 && m.normalScale) {
+            normalScaleSamples.push(+m.normalScale.x.toFixed(2));
+          }
+        } else if (m.isMeshStandardMaterial) {
+          normalNulled++;
+        }
+      }
+    });
+  } catch (e) {}
+  return {
+    materials: meshes,
+    withMap,
+    mapNulled,
+    withNormal,
+    normalNulled,
+    normalScaleSamples,
+    programs: (() => {
+      try {
+        return renderer.info.programs ? renderer.info.programs.length : -1;
+      } catch (e) {
+        return -1;
+      }
+    })(),
+    calls: (() => {
+      try {
+        return renderer.info.render.calls;
+      } catch (e) {
+        return -1;
+      }
+    })(),
+    guardLevel: typeof PerformanceGuard !== 'undefined' ? PerformanceGuard.getLevel() : -1,
+  };
+}
+
+/** 确定性 draw call：关掉 autoReset → reset → 手动渲染一帧 → 读计数（不受帧间抖动影响） */
+export function probeDrawCalls() {
+  try {
+    const prev = renderer.info.autoReset;
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    renderer.render(scene, camera);
+    const calls = renderer.info.render.calls;
+    const tris = renderer.info.render.triangles;
+    renderer.info.autoReset = prev;
+    renderer.info.reset();
+    return { calls, triangles: tris };
+  } catch (e) {
+    return { calls: -1, triangles: -1, error: String(e && e.message) };
+  }
+}
+
+export function forceDegrade(level) {
+  PerformanceGuard.forceLevel(level);
+  return { level: PerformanceGuard.getLevel(), dpr: renderer.getPixelRatio() };
 }
 
 /* ---------- SMK-09 地图切换 ---------- */

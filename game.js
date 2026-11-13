@@ -2087,6 +2087,27 @@ function init() {
         if (typeof RenderPipeline !== 'undefined') {
             RenderPipeline.init(renderer, scene, camera);
         }
+        // ---- 首局静态合批（补跑）----
+        // rebuildMapEnvironment() 在本函数的前半段已经跑过一次，但那时
+        // GraphicsEnhancement.init() 还没执行，GraphicsEnhancement.isEnabled() === false，
+        // 于是 batchStatic 被 game.js:rebuildMapEnvironment 里的守卫跳过。
+        // 后果：玩家第一次进图之前，场景以约 11,000 个未合批网格在渲染，
+        // draw call 约 3,500（合批后约 1,050），也就是「新玩家第一眼看到的是最差的一帧」。
+        // 这里补跑一次即可，成本远低于重建整张地图。
+        // 注意：只补 batchStatic + 雾距刷新，**不要重跑 WorldPolish.apply** ——
+        // 接地阴影的足迹采集依赖 ConeGeometry 类型，而合批后的树冠已变成普通 BufferGeometry，
+        // 重跑会丢树影。第一批 apply 建的 InstancedMesh 不受合批影响（batchStatic 跳过 InstancedMesh）。
+        try {
+            if (typeof WorldPolish !== 'undefined' && mapEnvironmentGroup &&
+                typeof GraphicsEnhancement !== 'undefined' && GraphicsEnhancement.isEnabled()) {
+                WorldPolish.batchStatic(mapEnvironmentGroup);
+                if (typeof RenderPipeline !== 'undefined' && RenderPipeline.refreshFog) {
+                    RenderPipeline.refreshFog();
+                }
+            }
+        } catch (e) {
+            reportInitError('init:firstRaidBatching', e);
+        }
         // 武器世界特效：枪口火焰 / 抛壳 / 弹孔贴花 / 火花
         if (typeof WeaponFX !== 'undefined') {
             WeaponFX.init(scene, camera);

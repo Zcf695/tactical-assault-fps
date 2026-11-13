@@ -17,16 +17,19 @@ var MAP_DATA_MILITARY = {
     containerCount: { normal: 200, hard: 260 },
 
     theme: {
+        // ===== 以下数值来自 design/art/art-data-tables.md 表 A（定稿），勿自行调整 =====
+        // 表 A 派生验收值：uZenith #2a5b90 (H211 S55 L37) / uHorizon #b6ac9b (H36 S16 L66)
+        //                半球光地面色 #344237    天顶饱和度 55（三图中最高，深蓝基调）
         groundColor: 0x4a5f4f,
-        // 地面 PBR 贴图种类（PBRTextures 的 kind）：军事基地以裸露土地/训练场为主
+        skyColor: 0x4a86c8,
+        fogColor: 0xa8aca8,
+        fogNear: 80,
+        fogFar: 260,
+        // 地面 PBR 贴图种类（PBRTextures 的 kind）：军事基地以砾石/训练场为主
         // 缺省时 game.js:getGroundSurface 与 graphics_enhancement 都会退回 'grass'
-        groundSurface: 'dirt',
+        groundSurface: 'gravel',
         // 屋顶女儿墙颜色（楼顶 PBR 贴图会遮住屋面板，此色主要影响女儿墙与降级回退路径）
-        roofColor: 0x4e5148,
-        skyColor: 0x87ceeb,
-        fogColor: 0xa8d0e0,
-        fogNear: 55,
-        fogFar: 205,
+        roofColor: 0x555a52,
         roadColor: 0x555545,
         wallColor: 0x5a5a52,
         coverColors: [0x6a5a4a, 0x5a5a5a, 0x7a6a5a, 0x4a5a4a]

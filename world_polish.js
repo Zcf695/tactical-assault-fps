@@ -225,6 +225,10 @@ const WorldPolish = (function () {
             if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return;
             if (!o.visible) return;
             if (o.userData && o.userData.noBatch) return;
+            // 已经合批过的产物不再参与下一轮合批。
+            // 必要性：init() 阶段要补跑一次 batchStatic（首局合批），若不跳过，
+            // 已有批次会被当成普通网格再分组合并一次，白白多一轮 merge 且可能改变分组结果。
+            if (o.userData && o.userData.isBatchedStatic) return;
             if (!o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
             if (o.geometry.morphAttributes && Object.keys(o.geometry.morphAttributes).length) return;
             const mat = o.material;

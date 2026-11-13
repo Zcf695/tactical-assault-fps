@@ -489,10 +489,42 @@ const PBRTextures = (function () {
         }
     }
 
+    // 未知 kind 的告警去重集合：同一个拼错的 kind 只报一次，避免刷屏（材质升级会遍历上千个网格）
+    const _warnedKinds = Object.create(null);
+
+    /**
+     * 未知 kind 的显式告警（同一 kind 只报一次）。
+     *
+     * 为什么加：applyToMesh 拿不到 set 就静默 return false，调用方回落到单张 Canvas 贴图。
+     * 这个「静默 fallback」通道本身是合理的（降级比崩溃好），但它把「拼错的 kind」
+     * 和「正常降级」混在一起，事后无法区分。
+     *
+     * 一条如实记录：本轮评审中我（程基岩）曾误判 `concreteDark` 是不存在的 kind、
+     * 并据此上报了一个「墙体 PBR 从未生效」的缺陷。实际上 SPECS 里一直有 concreteDark
+     * （本文件第 230 行），是我的静态扫描窗口写错（awk 从第 250 行起）导致漏检。
+     * 结论是：**所有 11 个调用点的 kind 都合法，当前没有任何未知 kind**。
+     *
+     * 但这恰恰说明需要一个机器可查的答案——人不该靠 grep 窗口来判断这种事。
+     * 所以这里保留告警：正常运行时它永不触发（成本为零），一旦有人拼错就立刻可见，
+     * 并且会进 window.__initErrors 留下可查询记录。
+     */
+    function _warnUnknownKind(kind) {
+        const k = String(kind);
+        if (_warnedKinds[k]) return;
+        _warnedKinds[k] = true;
+        const msg = '[PBRTextures] 未知贴图种类 "' + k + '"，已静默回落到调用方的备选贴图。' +
+            '可用种类：' + Object.keys(SPECS).join(' / ');
+        if (typeof reportInitError === 'function') {
+            reportInitError('PBRTextures:unknownKind:' + k, new Error(msg), { once: true });
+        } else if (typeof console !== 'undefined' && console.warn) {
+            console.warn(msg);
+        }
+    }
+
     function get(kind) {
         if (_sets[kind]) return _sets[kind];
         const spec = SPECS[kind];
-        if (!spec) return null;
+        if (!spec) { _warnUnknownKind(kind); return null; }
         const t0 = performance.now();
         const set = build(spec);
         _sets[kind] = set;
