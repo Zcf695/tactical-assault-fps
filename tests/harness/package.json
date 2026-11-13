@@ -1,0 +1,15 @@
+{
+  "name": "tactical-assault-qa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "《战术突击》L1 冒烟测试 harness（自包含：静态服务 + Playwright + 证据落盘）",
+  "scripts": {
+    "smoke": "node smoke.mjs",
+    "smoke:headful": "node smoke.mjs --headful",
+    "install:browser": "node -e \"console.log('chromium 由 ms-playwright 缓存提供，或设置 QA_CHROME 指向 chrome.exe')\""
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

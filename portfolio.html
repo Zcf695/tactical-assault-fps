@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zcf695 - Full-Stack Developer</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d2991d;
+    --red: #f85149;
+    --purple: #a371f7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 48px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
+  .hero .tagline { color: var(--muted); font-size: 1.15rem; margin-bottom: 24px; }
+  .hero .location { color: var(--muted); font-size: 0.9rem; }
+  .hero .location::before { content: '📍 '; }
+  .badges {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .badge {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  /* Sections */
+  section { padding: 48px 0; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: none; }
+  h2 { font-size: 1.5rem; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+  h2 .icon { font-size: 1.3rem; }
+
+  /* Project cards */
+  .project-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .project-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    transition: border-color 0.2s;
+    text-decoration: none; color: inherit; display: block;
+  }
+  .project-card:hover { border-color: var(--accent); }
+  .project-card h3 { font-size: 1.1rem; margin-bottom: 8px; }
+  .project-card p { color: var(--muted); font-size: 0.9rem; margin-bottom: 12px; }
+  .project-card .tech { display: flex; gap: 6px; flex-wrap: wrap; }
+  .project-card .tech span {
+    background: rgba(88,166,255,0.1);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+  }
+
+  /* Skills */
+  .skill-group { margin-bottom: 28px; }
+  .skill-group h3 { font-size: 1rem; margin-bottom: 12px; color: var(--accent); }
+  .skill-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .skill-tag {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.88rem;
+  }
+
+  /* Contact */
+  .contact-links {
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .contact-link {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 20px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s;
+  }
+  .contact-link:hover { border-color: var(--accent); }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  /* Status dot */
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--green);
+    margin-right: 6px; animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="container">
+    <h1>Zcf695</h1>
+    <p class="tagline">全栈开发者 · 游戏开发 · Python自动化</p>
+    <p class="location">China · 可远程</p>
+    <div class="badges">
+      <span class="badge"><span class="status-dot"></span>Open to work</span>
+      <span class="badge">🎓 3+ Years Coding</span>
+      <span class="badge">🌐 EN/中文</span>
+    </div>
+  </div>
+</div>
+
+<!-- Projects -->
+<section>
+  <div class="container">
+    <h2><span class="icon">🚀</span> Projects</h2>
+    <div class="project-grid">
+
+      <a href="https://zcf695.github.io/tactical-assault-fps/" class="project-card">
+        <h3>🎯 战术突击 - 搜打撤</h3>
+        <p>Delta Force风格浏览器FPS游戏。Three.js+Canvas混合渲染，格子背包系统，6个稀有度等级，3张地图，AI敌人系统。</p>
+        <div class="tech">
+          <span>Three.js</span><span>Canvas</span><span>JavaScript</span><span>GameDev</span>
+        </div>
+      </a>
+
+      <a href="https://github.com/Zcf695" class="project-card">
+        <h3>🐍 Python Automation</h3>
+        <p>Python脚本自动化工具集：数据处理、网页爬虫、批量文件操作、API集成。高效的自动化解决方案。</p>
+        <div class="tech">
+          <span>Python</span><span>Pandas</span><span>Selenium</span><span>Requests</span>
+        </div>
+      </a>
+
+      <a href="https://github.com/Zcf695" class="project-card">
+        <h3>🌐 Web Full-Stack</h3>
+        <p>现代Web应用开发：React前端 + Node.js后端，RESTful API设计，数据库管理。</p>
+        <div class="tech">
+          <span>Node.js</span><span>React</span><span>REST API</span><span>SQL</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- Skills -->
+<section>
+  <div class="container">
+    <h2><span class="icon">🛠️</span> Skills</h2>
+
+    <div class="skill-group">
+      <h3>Languages</h3>
+      <div class="skill-tags">
+        <span class="skill-tag">Python</span>
+        <span class="skill-tag">JavaScript</span>
+        <span class="skill-tag">HTML5/CSS3</span>
+        <span class="skill-tag">SQL</span>
+      </div>
+    </div>
+
+    <div class="skill-group">
+      <h3>Frontend & Game</h3>
+      <div class="skill-tags">
+        <span class="skill-tag">Three.js</span>
+        <span class="skill-tag">Canvas API</span>
+        <span class="skill-tag">WebGL</span>
+        <span class="skill-tag">React</span>
+        <span class="skill-tag">Pointer Lock API</span>
+        <span class="skill-tag">Web Audio</span>
+      </div>
+    </div>
+
+    <div class="skill-group">
+      <h3>Backend & Tools</h3>
+      <div class="skill-tags">
+        <span class="skill-tag">Node.js</span>
+        <span class="skill-tag">REST APIs</span>
+        <span class="skill-tag">Git</span>
+        <span class="skill-tag">GitHub Actions</span>
+        <span class="skill-tag">Linux/Mac</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Services -->
+<section>
+  <div class="container">
+    <h2><span class="icon">💼</span> 接单方向</h2>
+    <div class="project-grid">
+      <div class="project-card">
+        <h3>🎮 网页游戏开发</h3>
+        <p>HTML5 Canvas / Three.js游戏开发，FPS、休闲游戏、交互体验。从原型到完整游戏。</p>
+      </div>
+      <div class="project-card">
+        <h3>🤖 Python自动化</h3>
+        <p>数据采集、报表生成、批量处理、自动化工作流。节省你的时间和人力成本。</p>
+      </div>
+      <div class="project-card">
+        <h3>🌐 Web应用开发</h3>
+        <p>企业官网、管理后台、API服务。前后端一条龙，快速交付。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section>
+  <div class="container">
+    <h2><span class="icon">📬</span> Contact</h2>
+    <div class="contact-links">
+      <a href="https://github.com/Zcf695" class="contact-link">
+        <span>🐙</span> GitHub
+      </a>
+      <a href="mailto:1514251419@qq.com" class="contact-link">
+        <span>📧</span> Email
+      </a>
+      <a href="https://zcf695.github.io/tactical-assault-fps/" class="contact-link">
+        <span>🎮</span> Play FPS Game
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    © 2026 Zcf695 · Built for freelance · Ready to work
+  </div>
+</footer>
+
+</body>
+</html>

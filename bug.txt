@@ -1,0 +1,41 @@
+============================================================
+[待办] 敌人攻击动作模组
+记录时间：2026-10-17
+状态：搁置（用户暂缓，先做标记）
+============================================================
+
+需求：
+  敌人开枪攻击时没有攻击/开火动作，只有 Idle/Walk/Run 循环，
+  视觉上"手里拿枪站着不动却在开枪"。
+
+现状：
+  当前 3 个 GLB 模型自带的动画清单如下：
+    Soldier.glb          -> Idle, Run, Walk, TPose
+    Xbot.glb             -> idle, run, walk, agree, headShake, sad_pose, sneak_pose
+    RobotExpressive.glb  -> Idle, Walking, Running, Jump, Punch, Wave,
+                            Dance, Death, Sitting, Standing, ThumbsUp,
+                            Yes, No, WalkJump
+  结论：Soldier / Xbot 完全没有射击或攻击动画；
+        RobotExpressive 仅有 Punch（出拳）可勉强冒充实击。
+
+可选方案：
+  A. 代码模拟开火（推荐，三模型通用，成本最低）
+     - 开枪瞬间给枪加后坐力抖动（枪口上抬后回弹）
+     - 复用已有枪口闪光 createMuzzleFlash
+     - 不需要改模型和动画资源
+  B. 用 RobotExpressive 的 Punch 冒充实击（仅 Lv3）
+  C. 换带 Fire / Shoot / Aim 动画的 GLB 模型
+     - 备选：Shane Brumback 的 soldier_rigged.glb（含 Fire/Reload）
+     - 缺点：写实风格与本项目低多边形地图不搭
+
+涉及代码位置：
+  game.js -> enemyShoot(e)                     敌人开火函数
+  game.js -> createEnemyGun()                  敌人手持枪模型
+  game.js -> setupEnemyModel()                 模型挂载与动画初始化
+  game.js -> updateEnemies(dt)                 每帧动画状态切换
+  game.js -> setEnemyAnim(grp, name)           动画切换封装
+  enemy_ai.js -> doCombatBehavior()            战斗状态行为
+
+恢复此项时建议优先实现方案 A。
+
+============================================================

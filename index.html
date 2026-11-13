@@ -4,9 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>战术突击 - 搜打撤</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-panel: #11161d;
+            --bg-card: #1a212b;
+            --border: #2a3441;
+            --border-light: #3a4759;
+            --accent: #ff9800;
+            --accent-glow: rgba(255,152,0,0.4);
+            --text-primary: #e8edf2;
+            --text-secondary: #8b9bb0;
+            --text-muted: #5a6a7e;
+            --danger: #f44336;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --font-heading: 'Rajdhani', 'Noto Sans SC', sans-serif;
+            --font-body: 'Noto Sans SC', 'Rajdhani', sans-serif;
+            --font-mono: 'Consolas', 'Courier New', monospace;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { overflow: hidden; font-family: 'Microsoft YaHei', Arial, sans-serif; background: #0a0a0f; user-select: none; }
+        body { overflow: hidden; font-family: var(--font-body); background: var(--bg-dark); user-select: none; color: var(--text-primary); }
         #gameCanvas { display: block; }
 
         /* ====== Rarity Colors ====== */
@@ -20,61 +39,90 @@
         /* ====== Lobby ====== */
         #lobbyScreen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+            background: radial-gradient(ellipse at 30% 20%, rgba(255,152,0,0.04) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 80%, rgba(74,144,217,0.03) 0%, transparent 50%),
+                        linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-panel) 50%, var(--bg-dark) 100%);
             display: flex; z-index: 300;
         }
         .lobby-left {
-            width: 220px; min-width: 220px; background: rgba(22,27,34,0.95);
-            border-right: 1px solid #30363d; padding: 20px 0; display: flex; flex-direction: column;
+            width: 220px; min-width: 220px; background: rgba(17,22,29,0.95);
+            border-right: 1px solid var(--border); padding: 20px 0; display: flex; flex-direction: column;
         }
         .lobby-logo { text-align: center; padding: 15px; margin-bottom: 20px; }
-        .lobby-logo h1 { color: #f0f6fc; font-size: 22px; letter-spacing: 3px; }
-        .lobby-logo p { color: #8b949e; font-size: 11px; margin-top: 5px; letter-spacing: 2px; }
+        .lobby-logo h1 { color: var(--text-primary); font-family: var(--font-heading); font-size: 24px; letter-spacing: 4px; font-weight: 700; }
+        .lobby-logo p { color: var(--text-secondary); font-size: 11px; margin-top: 5px; letter-spacing: 3px; }
         .lobby-menu { list-style: none; flex: 1; }
         .lobby-menu li {
-            padding: 14px 25px; color: #8b949e; cursor: pointer; transition: all 0.2s;
+            padding: 14px 25px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
             border-left: 3px solid transparent; font-size: 13px;
         }
-        .lobby-menu li:hover { background: rgba(255,152,0,0.1); color: #ff9800; }
-        .lobby-menu li.active { background: rgba(255,152,0,0.15); color: #ff9800; border-left-color: #ff9800; }
-        .lobby-money { padding: 20px; text-align: center; border-top: 1px solid #30363d; }
-        .lobby-money .money-val { color: #ff9800; font-size: 20px; font-weight: bold; }
-        .lobby-money .money-label { color: #6e7681; font-size: 10px; margin-top: 3px; }
+        .lobby-menu li:hover { background: rgba(255,152,0,0.08); color: var(--accent); }
+        .lobby-menu li.active { background: rgba(255,152,0,0.12); color: var(--accent); border-left-color: var(--accent); }
+        .lobby-money { padding: 20px; text-align: center; border-top: 1px solid var(--border); }
+        .lobby-money .money-val { color: var(--accent); font-size: 20px; font-weight: bold; font-family: var(--font-heading); }
+        .lobby-money .money-label { color: var(--text-muted); font-size: 10px; margin-top: 3px; }
 
         .lobby-main { flex: 1; padding: 35px; overflow-y: auto; }
         .lobby-section { display: none; }
-        .lobby-section.active { display: block; }
+        .lobby-section.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .section-title {
-            color: #f0f6fc; font-size: 26px; margin-bottom: 25px;
-            padding-bottom: 12px; border-bottom: 1px solid #30363d;
+            color: var(--text-primary); font-family: var(--font-heading); font-size: 26px; margin-bottom: 25px;
+            padding-bottom: 12px; border-bottom: 1px solid var(--border); font-weight: 600; letter-spacing: 1px;
         }
 
         .mode-cards { display: flex; gap: 25px; margin-bottom: 35px; }
         .mode-card {
-            flex: 1; background: rgba(22,27,34,0.8); border: 2px solid #30363d;
+            flex: 1; background: rgba(26,33,43,0.8); border: 2px solid var(--border);
             border-radius: 8px; padding: 25px; cursor: pointer; transition: all 0.3s;
+            position: relative; overflow: hidden;
+            animation: cardFadeIn 0.4s ease-out backwards;
         }
-        .mode-card:hover { border-color: #ff9800; transform: translateY(-3px); }
-        .mode-card.selected { border-color: #ff9800; background: rgba(255,152,0,0.05); }
-        .mode-card h3 { color: #f0f6fc; font-size: 20px; margin-bottom: 10px; }
-        .mode-card .mode-desc { color: #8b949e; font-size: 12px; line-height: 1.8; margin-bottom: 12px; }
-        .mode-card .mode-stats { font-size: 11px; color: #6e7681; }
-        .mode-card .mode-stats span { color: #ff9800; }
+        .mode-card:nth-child(1) { animation-delay: 0.1s; }
+        .mode-card:nth-child(2) { animation-delay: 0.2s; }
+        @keyframes cardFadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .mode-card::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            transition: left 0.5s;
+        }
+        .mode-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
+        .mode-card:hover::before { left: 100%; }
+        .mode-card.selected { border-color: var(--accent); background: rgba(255,152,0,0.05); box-shadow: 0 0 20px var(--accent-glow); }
+        .mode-card h3 { color: var(--text-primary); font-family: var(--font-heading); font-size: 22px; margin-bottom: 10px; font-weight: 600; }
+        .mode-card .mode-desc { color: var(--text-secondary); font-size: 12px; line-height: 1.8; margin-bottom: 12px; }
+        .mode-card .mode-stats { font-size: 11px; color: var(--text-muted); }
+        .mode-card .mode-stats span { color: var(--accent); }
         .start-btn {
             display: block; width: 280px; margin: 0 auto; padding: 16px;
-            font-size: 18px; background: linear-gradient(135deg, #ff9800, #f57c00);
-            border: none; color: #fff; cursor: pointer; border-radius: 5px;
-            font-weight: bold; letter-spacing: 3px; transition: all 0.3s;
+            font-size: 18px; font-family: var(--font-heading); font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), #f57c00); border: none; color: #fff;
+            cursor: pointer; border-radius: 5px; letter-spacing: 4px; transition: all 0.3s;
+            position: relative; overflow: hidden;
+            animation: btnPulse 2s ease-in-out infinite;
         }
-        .start-btn:hover { transform: scale(1.02); box-shadow: 0 5px 25px rgba(255,152,0,0.4); }
+        @keyframes btnPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255,152,0,0.3); }
+            50% { box-shadow: 0 0 20px 5px rgba(255,152,0,0.2); }
+        }
+        .start-btn::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        .start-btn:hover { transform: scale(1.02); box-shadow: 0 5px 30px var(--accent-glow); }
+        .start-btn:hover::after { left: 100%; }
+        .start-btn:active { transform: scale(0.98); }
 
         .player-stats {
-            display: flex; gap: 25px; margin-bottom: 25px; padding: 18px;
+            display: flex; gap: 15px; margin-bottom: 25px; padding: 18px;
             background: rgba(22,27,34,0.6); border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
         }
-        .stat-item { text-align: center; flex: 1; }
-        .stat-item .stat-val { font-size: 26px; font-weight: bold; color: #ff9800; }
-        .stat-item .stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+        .stat-item { text-align: center; flex: 1; padding: 8px 4px; border-radius: 4px; transition: all 0.2s; }
+        .stat-item:hover { background: rgba(255,152,0,0.05); }
+        .stat-item .stat-val { font-size: 28px; font-weight: bold; color: var(--accent); font-family: var(--font-heading); text-shadow: 0 0 10px rgba(255,152,0,0.2); }
+        .stat-item .stat-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; letter-spacing: 1px; }
 
         /* ====== Grid System ====== */
         .grid-cell {
@@ -128,7 +176,8 @@
             0% { box-shadow: 0 0 30px rgba(255,50,0,1), 0 0 60px rgba(255,100,0,0.8); filter: brightness(2); }
             100% { box-shadow: 0 0 0px transparent, 0 0 0px transparent; filter: brightness(1); }
         }
-        .grid-item .gi-icon { font-size: 22px; line-height: 1; }
+        .grid-item .gi-icon { font-size: 26px; line-height: 1; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; overflow: hidden; }
+        .grid-item .gi-icon img { max-width: 90%; max-height: 100%; object-fit: contain; pointer-events: none; }
         .grid-item .gi-name { font-size: 8px; color: var(--rarity-color); margin-top: 1px; text-align: center; white-space: nowrap; }
         .grid-item .gi-value { font-size: 7px; color: #888; position: absolute; bottom: 2px; right: 4px; }
 
@@ -148,6 +197,76 @@
         .inv-count { color: #8b949e; font-size: 10px; }
         .inv-mini-grid { display: grid; gap: 1px; }
 
+        /* ===== Loadout Preset System ===== */
+        .loadout-panel {
+            background: linear-gradient(135deg, rgba(255,152,0,0.06), rgba(0,0,0,0.3));
+            border: 1px solid rgba(255,152,0,0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+        }
+        .loadout-save-row {
+            display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
+        }
+        .loadout-name-input {
+            flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #30363d; border-radius: 4px;
+            color: #f0f6fc; padding: 6px 10px; font-size: 12px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .loadout-name-input:focus { border-color: #ff9800; }
+        .loadout-name-input::placeholder { color: #6e7681; }
+        .loadout-save-btn {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            border: none; border-radius: 4px; color: #fff; padding: 6px 14px;
+            font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .loadout-save-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+        .loadout-save-btn:active { transform: translateY(0); }
+        .loadout-empty {
+            color: #6e7681; font-size: 11px; text-align: center; padding: 8px 0;
+        }
+        .loadout-card {
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(0,0,0,0.4); border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 10px; margin-top: 6px; cursor: pointer;
+            transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .loadout-card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+            background: linear-gradient(180deg, #ff9800, #f57c00);
+        }
+        .loadout-card:hover {
+            border-color: #ff9800; background: rgba(255,152,0,0.08);
+            transform: translateX(4px);
+        }
+        .loadout-card-icon {
+            font-size: 20px; flex-shrink: 0;
+            filter: drop-shadow(0 0 4px rgba(255,152,0,0.4));
+        }
+        .loadout-card-body { flex: 1; min-width: 0; overflow: hidden; }
+        .loadout-card-name {
+            color: #f0f6fc; font-size: 13px; font-weight: bold;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .loadout-card-summary {
+            color: #8b949e; font-size: 10px; margin-top: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .loadout-card-count {
+            color: #ff9800; font-size: 10px; margin-top: 2px;
+        }
+        .loadout-card-delete {
+            background: rgba(248,81,73,0.15); border: 1px solid rgba(248,81,73,0.3);
+            border-radius: 4px; color: #f85149; width: 22px; height: 22px;
+            font-size: 12px; cursor: pointer; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .loadout-card-delete:hover {
+            background: rgba(248,81,73,0.35); border-color: #f85149;
+        }
+
         /* Character equipment slot */
         .char-slot {
             background: rgba(0,0,0,0.5); border: 1px solid #2a2a2a; border-radius: 2px;
@@ -164,21 +283,30 @@
             background: rgba(0,0,0,0.4); border: 2px solid #30363d;
             border-radius: 6px; width: fit-content;
         }
+        .stash-grid-scroll {
+            max-height: 520px; overflow-y: auto; overflow-x: hidden;
+            border-radius: 6px;
+        }
+        .stash-grid-scroll::-webkit-scrollbar { width: 8px; }
+        .stash-grid-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 4px; }
+        .stash-grid-scroll::-webkit-scrollbar-thumb { background: #484f58; border-radius: 4px; }
+        .stash-grid-scroll::-webkit-scrollbar-thumb:hover { background: #636c76; }
 
         /* ====== Shop ====== */
         .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
         .shop-item-card {
-            display: flex; flex-direction: column; align-items: center; padding: 12px;
+            display: flex; flex-direction: column; align-items: center; padding: 10px;
             border: 2px solid var(--rarity-border); border-radius: 6px;
-            background: var(--rarity-bg); transition: all 0.2s;
+            background: var(--rarity-bg); transition: all 0.2s; min-height: 140px;
         }
         .shop-item-card:hover { filter: brightness(1.2); }
-        .shop-item-card .shop-icon { font-size: 32px; margin-bottom: 4px; }
-        .shop-item-card .shop-name { font-size: 13px; font-weight: bold; color: var(--rarity-color); margin-bottom: 2px; }
+        .shop-item-card .shop-icon { font-size: 28px; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; flex-shrink: 0; }
+        .shop-item-card .shop-icon img { max-width: 52px; max-height: 52px; object-fit: contain; pointer-events: none; }
+        .shop-item-card .shop-name { font-size: 12px; font-weight: bold; color: var(--rarity-color); margin-bottom: 2px; text-align: center; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .shop-item-card .shop-rarity { font-size: 9px; color: var(--rarity-color); margin-bottom: 4px; opacity: 0.8; }
-        .shop-item-card .shop-owned { font-size: 10px; color: #6e7681; margin-bottom: 8px; }
+        .shop-item-card .shop-owned { font-size: 10px; color: #6e7681; margin-bottom: 6px; }
         .shop-btns { display: flex; gap: 4px; width: 100%; }
-        .shop-btn { flex: 1; padding: 5px 2px; font-size: 10px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+        .shop-btn { flex: 1; padding: 5px 2px; font-size: 9px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; transition: all 0.2s; white-space: nowrap; overflow: hidden; }
         .shop-btn.buy { background: #2e7d32; color: #fff; }
         .shop-btn.buy:hover { background: #43a047; }
         .shop-btn.buy:disabled { background: #333; color: #555; cursor: not-allowed; }
@@ -190,57 +318,185 @@
         /* ====== Game HUD ====== */
         #gameHUD { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 100; }
-        .crosshair-dot { width: 3px; height: 3px; background: rgba(255,255,255,0.9); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
-        .crosshair-ring { width: 18px; height: 18px; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); transition: all 0.3s; }
+        .crosshair-dot { width: 4px; height: 4px; background: rgba(255,255,255,0.95); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); box-shadow: 0 0 2px rgba(0,0,0,0.8), 0 0 6px rgba(255,255,255,0.25); }
+        .crosshair-ring { width: 18px; height: 18px; border: 1.5px solid rgba(255,255,255,0.55); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); transition: all 0.3s; box-shadow: 0 0 4px rgba(0,0,0,0.5); }
+
+        /* Hit marker */
+        #hitMarker {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            width: 24px; height: 24px; pointer-events: none; z-index: 101; opacity: 0;
+        }
+        #hitMarker.show { animation: hitMarkerShow 0.3s ease-out; }
+        #hitMarker.kill { animation: hitMarkerKill 0.5s ease-out; }
+        @keyframes hitMarkerShow {
+            0% { opacity: 1; transform: translate(-50%,-50%) scale(1.4); }
+            100% { opacity: 0; transform: translate(-50%,-50%) scale(0.8); }
+        }
+        @keyframes hitMarkerKill {
+            0% { opacity: 1; transform: translate(-50%,-50%) scale(1.6); }
+            50% { opacity: 1; transform: translate(-50%,-50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%,-50%) scale(0.9); }
+        }
+        .hit-marker-line { position: absolute; background: #fff; box-shadow: 0 0 3px rgba(0,0,0,0.8); }
+        .hit-marker-line.tl { top: 0; left: 50%; width: 2px; height: 8px; transform: translateX(-50%) rotate(45deg); transform-origin: bottom; }
+        .hit-marker-line.tr { top: 0; right: 50%; width: 2px; height: 8px; transform: translateX(50%) rotate(-45deg); transform-origin: bottom; }
+        .hit-marker-line.bl { bottom: 0; left: 50%; width: 2px; height: 8px; transform: translateX(-50%) rotate(-45deg); transform-origin: top; }
+        .hit-marker-line.br { bottom: 0; right: 50%; width: 2px; height: 8px; transform: translateX(50%) rotate(45deg); transform-origin: top; }
+        #hitMarker.kill .hit-marker-line { background: #f44336; }
+        #hitMarker.headshot { animation: hitMarkerHeadshot 0.42s ease-out; }
+        #hitMarker.headshot .hit-marker-line { background: #ffc107; width: 3px; height: 10px; }
+        @keyframes hitMarkerHeadshot {
+            0% { opacity: 1; transform: translate(-50%,-50%) scale(1.55); }
+            60% { opacity: 1; transform: translate(-50%,-50%) scale(1.05); }
+            100% { opacity: 0; transform: translate(-50%,-50%) scale(0.92); }
+        }
+
+        /* 罗盘目标标记（撤离 / 空投 / Boss） */
+        #compassObjectives {
+            position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+            width: 280px; height: 15px; pointer-events: none; z-index: 56;
+        }
+        .cm {
+            position: absolute; top: 0; left: 50%; margin-left: -10px; width: 20px;
+            display: flex; flex-direction: column; align-items: center;
+            transition: opacity 0.15s linear; will-change: transform;
+        }
+        .cm i {
+            display: block; width: 8px; height: 8px; transform: rotate(45deg);
+            border: 1px solid rgba(0,0,0,0.55); box-shadow: 0 0 6px currentColor;
+        }
+        .cm b {
+            font: 700 8px/1 var(--font-heading); letter-spacing: 0.3px;
+            margin-top: 1px; color: #e8edf2; text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+        }
+        .cm-extract i { background: #4caf50; color: #4caf50; }
+        .cm-airdrop i { background: #ffd700; color: #ffd700; }
+        .cm-boss i { background: #e040fb; color: #e040fb; }
+        .cm.edge { opacity: 0.45; }
+        .cm.edge b { display: none; }
+
+        /* 伤害来源弧形指示（可叠加） */
+        #damageArcs {
+            position: fixed; inset: 0; pointer-events: none; z-index: 99;
+            overflow: hidden;
+        }
+        .dmg-arc-wrap {
+            position: absolute; top: 50%; left: 50%;
+            width: min(72vh, 94vw); aspect-ratio: 1;
+            animation: dmgArc 0.95s ease-out forwards;
+            will-change: transform, opacity;
+        }
+        .dmg-arc-wrap svg { width: 100%; height: 100%; overflow: visible; display: block; }
+        .dmg-arc-main {
+            fill: none; stroke: #ff5a40; stroke-width: 4; opacity: 0.92;
+            filter: drop-shadow(0 0 6px rgba(255,60,30,0.55));
+            stroke-linecap: round;
+        }
+        .dmg-arc-tip {
+            fill: none; stroke: #ffd0c4; stroke-width: 1.8; opacity: 0.75;
+            stroke-linecap: round;
+        }
+        @keyframes dmgArc {
+            0% { opacity: 1; }
+            55% { opacity: 0.85; }
+            100% { opacity: 0; }
+        }
+
+        /* Directional damage indicator */
+        #damageIndicator {
+            position: fixed; top: 50%; left: 50%; width: 120px; height: 120px;
+            transform: translate(-50%,-50%); pointer-events: none; z-index: 99; opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .damage-arrow {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent;
+            border-bottom: 20px solid rgba(244,67,54,0.8);
+            filter: drop-shadow(0 0 4px rgba(244,67,54,0.6));
+        }
+
+        /* Compass */
+        #compass {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            width: 280px; height: 24px; overflow: hidden;
+            background: rgba(10,14,20,0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 3px;
+        }
+        #compassStrip {
+            height: 100%; position: relative; white-space: nowrap; font-family: var(--font-heading); font-size: 12px;
+        }
+        .compass-tick { display: inline-block; width: 3px; height: 8px; background: rgba(255,255,255,0.3); vertical-align: top; margin-top: 16px; }
+        .compass-tick.major { height: 12px; background: rgba(255,255,255,0.5); margin-top: 12px; }
+        .compass-label { display: inline-block; width: 30px; text-align: center; color: rgba(255,255,255,0.6); font-weight: 600; font-size: 11px; vertical-align: top; line-height: 24px; }
+        .compass-label.n { color: var(--accent); }
+        #compassNeedle {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 2px; height: 24px; background: var(--accent);
+            box-shadow: 0 0 4px var(--accent-glow);
+        }
 
         .status-panel { position: absolute; bottom: 25px; left: 25px; }
-        .status-bar { width: 180px; height: 16px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; margin-bottom: 4px; position: relative; }
-        .status-fill { height: 100%; transition: width 0.2s; }
-        .status-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
+        .status-bar { width: 180px; height: 16px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; margin-bottom: 4px; position: relative; backdrop-filter: blur(2px); }
         .status-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 10px; transition: width 0.3s; }
+        .status-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); z-index: 2; font-family: var(--font-heading); font-weight: 600; }
+        .status-val { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); z-index: 2; font-family: var(--font-mono); font-weight: 600; }
         #healthFill { background: linear-gradient(90deg, #f44336, #ef5350); }
         #armorFill { background: linear-gradient(90deg, #4a90d9, #64b5f6); }
         #staminaFill { background: linear-gradient(90deg, #4caf50, #81c784); }
 
-        #timerPanel { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); }
-        .timer-box { background: rgba(0,0,0,0.8); border: 2px solid #ff9800; border-radius: 4px; padding: 6px 25px; text-align: center; }
-        .timer-label { font-size: 9px; color: #ff9800; letter-spacing: 2px; }
-        .timer-value { font-size: 28px; font-weight: bold; color: #fff; font-family: Consolas, monospace; }
+        #timerPanel { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); }
+        .timer-box { background: rgba(10,14,20,0.8); border: 1px solid var(--accent); border-radius: 4px; padding: 4px 20px; text-align: center; }
+        .timer-label { font-size: 9px; color: var(--accent); letter-spacing: 2px; font-family: var(--font-heading); }
+        .timer-value { font-size: 24px; font-weight: bold; color: #fff; font-family: var(--font-mono); }
         .timer-value.warning { color: #f44336; animation: pulse 0.5s ease-in-out infinite; }
         @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-        #minimap { position: absolute; top: 15px; right: 15px; width: 140px; height: 140px; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; overflow: hidden; }
+        #minimap { position: absolute; top: 15px; right: 15px; width: 140px; height: 140px; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,152,0,0.3); border-radius: 50%; overflow: hidden; box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3); backdrop-filter: blur(2px); }
         #minimapCanvas { width: 100%; height: 100%; border-radius: 50%; }
 
         #weaponBar { position: absolute; bottom: 25px; right: 25px; display: flex; gap: 8px; }
-        .weapon-slot { width: 72px; height: 52px; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.2); border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #666; font-size: 10px; transition: all 0.2s; position: relative; }
-        .weapon-slot.active { border-color: #ff9800; background: rgba(255,152,0,0.15); box-shadow: 0 0 12px rgba(255,152,0,0.3); }
+        .weapon-slot { width: 72px; height: 52px; background: rgba(10,14,20,0.88); border: 2px solid rgba(255,255,255,0.15); border-radius: 4px; backdrop-filter: blur(4px); display: flex; flex-direction: column; justify-content: center; align-items: center; color: #666; font-size: 10px; transition: all 0.2s; position: relative; backdrop-filter: blur(2px); }
+        .weapon-slot.active { border-color: var(--accent); background: rgba(255,152,0,0.12); box-shadow: 0 0 12px var(--accent-glow); }
         .weapon-slot.has-weapon { color: #fff; }
         .weapon-slot .weapon-icon { font-size: 24px; margin-bottom: 2px; }
-        .weapon-slot .weapon-name { font-size: 10px; font-weight: bold; }
-        .weapon-slot .slot-key { position: absolute; top: 2px; left: 4px; font-size: 9px; color: #ff9800; }
+        .weapon-slot .weapon-name { font-size: 10px; font-weight: bold; font-family: var(--font-heading); }
+        .weapon-slot .slot-key { position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--accent); }
 
         #ammoDisplay { position: absolute; bottom: 95px; right: 25px; text-align: right; }
-        .ammo-main { font-size: 36px; font-weight: bold; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); line-height: 1; }
-        .ammo-reserve { font-size: 18px; color: #888; }
-        .ammo-type { font-size: 10px; color: #666; margin-top: 2px; }
+        .ammo-main { font-size: 36px; font-weight: bold; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); line-height: 1; font-family: var(--font-mono); }
+        .ammo-main.low { color: #f44336; animation: pulse 0.5s ease-in-out infinite; }
+        .ammo-reserve { font-size: 18px; color: #888; font-family: var(--font-mono); }
+        .ammo-type { font-size: 10px; color: #666; margin-top: 2px; font-family: var(--font-heading); letter-spacing: 1px; }
 
         #quickBar { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-        .quick-slot { width: 48px; height: 48px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; font-size: 18px; position: relative; }
-        .quick-slot .item-count { position: absolute; bottom: 1px; right: 3px; font-size: 10px; font-weight: bold; color: #ff9800; }
+        .quick-slot { width: 48px; height: 48px; background: rgba(10,14,20,0.88); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; backdrop-filter: blur(4px); display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; font-size: 18px; position: relative; }
+        .quick-slot .item-count { position: absolute; bottom: 1px; right: 3px; font-size: 10px; font-weight: bold; color: var(--accent); }
         .quick-slot .slot-key { position: absolute; top: 1px; left: 3px; font-size: 8px; color: #888; }
 
-        #searchPrompt { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); display: none; }
-        .prompt-box { background: rgba(0,0,0,0.85); border: 1px solid #ff9800; border-radius: 4px; padding: 10px 20px; text-align: center; }
-        .prompt-title { font-size: 14px; color: #fff; font-weight: bold; margin-bottom: 3px; }
+        /* Loot value tracker in HUD (左上角，等级显示下方) */
+        #lootTracker {
+            position: absolute; top: 105px; left: 10px;
+            background: rgba(10,14,20,0.7); border: 1px solid rgba(255,152,0,0.3); border-radius: 4px;
+            padding: 4px 10px; font-family: var(--font-heading); font-size: 12px;
+            color: var(--accent); font-weight: 600;
+        }
+        #lootTracker .loot-label { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; }
+
+        #searchPrompt { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); display: none; animation: promptIn 0.2s ease-out; }
+        @keyframes promptIn { from { opacity: 0; transform: translateX(-50%) translateY(5px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        .prompt-box { background: rgba(0,0,0,0.85); border: 1px solid #ff9800; border-radius: 4px; padding: 10px 20px; text-align: center; backdrop-filter: blur(2px); }
+        .prompt-title { font-size: 14px; color: #fff; font-weight: bold; margin-bottom: 3px; font-family: var(--font-heading); }
         .prompt-hint { font-size: 11px; color: #ff9800; }
 
-        #extractPrompt { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: none; }
-        .extract-box { background: rgba(0,0,0,0.9); border: 3px solid #ff9800; border-radius: 8px; padding: 20px 40px; text-align: center; animation: glow 1s ease-in-out infinite; }
-        .extract-box h2 { color: #ff9800; font-size: 24px; margin-bottom: 8px; }
+        #extractPrompt {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: none;
+            animation: extractIn 0.3s ease-out;
+        }
+        @keyframes extractIn { from { opacity: 0; transform: translate(-50%,-50%) scale(0.9); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+        .extract-box { background: rgba(0,0,0,0.9); border: 3px solid #ff9800; border-radius: 8px; padding: 20px 40px; text-align: center; animation: glow 1s ease-in-out infinite; backdrop-filter: blur(4px); }
+        .extract-box h2 { color: #ff9800; font-size: 24px; margin-bottom: 8px; font-family: var(--font-heading); letter-spacing: 2px; }
         .extract-box p { color: #fff; font-size: 13px; margin-bottom: 12px; }
-        .extract-progress { width: 220px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin: 0 auto; }
-        .extract-progress-fill { height: 100%; background: linear-gradient(90deg, #ff9800, #ffc107); transition: width 0.1s; width: 0%; }
+        .extract-progress { width: 220px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin: 0 auto; border: 1px solid rgba(255,255,255,0.1); }
+        .extract-progress-fill { height: 100%; background: linear-gradient(90deg, #ff9800, #ffc107); transition: width 0.1s; width: 0%; box-shadow: 0 0 8px rgba(255,152,0,0.5); }
         @keyframes glow { 0%,100% { box-shadow: 0 0 20px rgba(255,152,0,0.5); } 50% { box-shadow: 0 0 40px rgba(255,152,0,0.8); } }
 
         #damageOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 40%, rgba(255,0,0,0.4) 100%); pointer-events: none; z-index: 40; opacity: 0; transition: opacity 0.1s; }
@@ -258,30 +514,41 @@
         .search-progress-box {
             background: rgba(22,27,34,0.95); border: 2px solid #ff9800;
             border-radius: 10px; padding: 25px 40px; text-align: center;
+            box-shadow: 0 0 30px rgba(255,152,0,0.15);
+            animation: searchBoxIn 0.2s ease-out;
         }
-        .search-progress-box .sp-title { color: #f0f6fc; font-size: 18px; margin-bottom: 8px; }
+        @keyframes searchBoxIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .search-progress-box .sp-title { color: #f0f6fc; font-size: 18px; margin-bottom: 8px; font-family: var(--font-heading); }
         .search-progress-box .sp-hint { color: #8b949e; font-size: 11px; margin-bottom: 15px; }
         .search-progress-bar {
             width: 260px; height: 12px; background: #333; border-radius: 6px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
         }
         .search-progress-fill {
             height: 100%; background: linear-gradient(90deg, #ff9800, #ffc107);
             border-radius: 6px; transition: width 0.05s; width: 0%;
+            box-shadow: 0 0 8px rgba(255,152,0,0.4);
         }
 
         /* ====== Two-Panel Search Screen ====== */
-        #searchScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.88); z-index: 150; display: none; justify-content: center; align-items: center; }
-        .search-layout { display: flex; gap: 30px; align-items: flex-start; }
-        .search-panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+        #searchScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.88); z-index: 150; display: none; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .search-layout { display: flex; gap: 30px; align-items: flex-start; max-height: 95vh; overflow-y: auto; animation: searchScreenIn 0.2s ease-out; }
+        @keyframes searchScreenIn { from { opacity: 0; } to { opacity: 1; } }
+        .search-panel { background: rgba(22,27,34,0.95); border: 1px solid #30363d; border-radius: 8px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
         .search-panel h3 { color: #f0f6fc; font-size: 15px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
         .search-panel h3 .panel-subtitle { font-size: 11px; color: #8b949e; }
-        .search-grid { display: grid; gap: 2px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 4px; }
+        .search-grid { display: grid; gap: 2px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 4px; max-height: 75vh; overflow-y: auto; overflow-x: auto; }
         .search-actions { margin-top: 12px; display: flex; gap: 8px; }
         .search-actions button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .btn-takeall { background: linear-gradient(135deg, #ff9800, #f57c00); color: #fff; }
         .btn-close { background: #30363d; color: #8b949e; }
         .btn-close:hover { color: #f44336; }
         .loot-value-display { color: #ff9800; font-size: 14px; font-weight: bold; margin-top: 8px; text-align: right; }
+
+        /* ====== In-Game Backpack Screen ====== */
+        #backpackScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.88); z-index: 150; display: none; justify-content: center; align-items: flex-start; padding-top: 20px; padding-bottom: 20px; overflow-y: auto; }
+        #backpackScreen .search-panel { width: 480px; max-height: 92vh; overflow-y: auto; overflow-x: hidden; }
+        .bp-hint { font-size: 10px; color: #8b949e; text-align: center; margin-top: 6px; }
 
         /* ====== Result Screen ====== */
         #resultScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 200; display: none; justify-content: center; align-items: center; }
@@ -313,23 +580,422 @@
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+
+        /* ====== Loading Screen ====== */
+        #loadingScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(255,152,0,0.08) 0%, transparent 60%),
+                        linear-gradient(135deg, #0a0e14 0%, #11161d 50%, #0a0e14 100%);
+            display: flex; justify-content: center; align-items: center; z-index: 9999;
+            overflow: hidden; transition: opacity 0.5s ease;
+        }
+        #loadingScreen.hidden { opacity: 0; pointer-events: none; }
+        .loading-content { text-align: center; width: 90%; max-width: 500px; }
+        .loading-logo { margin-bottom: 40px; animation: loadingPulse 2s ease-in-out infinite; }
+        .loading-title {
+            font-size: 48px; font-weight: bold; color: #ff9800; margin: 0;
+            text-shadow: 0 0 20px rgba(255,152,0,0.5); letter-spacing: 4px;
+        }
+        .loading-subtitle { font-size: 18px; color: #8b949e; margin: 10px 0 0; letter-spacing: 8px; }
+        .loading-progress-container { margin-bottom: 30px; }
+        .loading-progress-bar {
+            width: 100%; height: 8px; background: rgba(255,255,255,0.1);
+            border-radius: 4px; overflow: hidden; margin-bottom: 15px;
+        }
+        .loading-progress-fill {
+            height: 100%; width: 0%; background: linear-gradient(90deg, #ff9800, #ffc107);
+            border-radius: 4px; transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(255,152,0,0.5);
+        }
+        .loading-progress-text {
+            display: flex; justify-content: space-between; align-items: center;
+            color: #8b949e; font-size: 14px;
+        }
+        #loadingPercent { color: #ff9800; font-weight: bold; font-size: 16px; }
+        #loadingStatus { color: #c9d1d9; }
+        .loading-tips {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,152,0,0.2);
+            border-radius: 8px; padding: 15px 20px; color: #8b949e; font-size: 13px;
+            line-height: 1.6;
+        }
+        .loading-tips p { margin: 0; }
+        @keyframes loadingPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.02); opacity: 0.9; }
+        }
+
+        /* ====== Login Screen (Enhanced) ====== */
+        #loginScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(255,152,0,0.06) 0%, transparent 60%),
+                        linear-gradient(135deg, #0a0e14 0%, #11161d 50%, #0a0e14 100%);
+            display: flex; justify-content: center; align-items: center; z-index: 500;
+            overflow: hidden;
+        }
+        #loginScreen::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px);
+            pointer-events: none;
+        }
+        #loginScreen::after {
+            content: ''; position: absolute; top: -100%; left: 0; width: 100%; height: 200%;
+            background: linear-gradient(180deg, transparent 0%, rgba(255,152,0,0.04) 50%, transparent 100%);
+            animation: scanLine 8s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes scanLine { 0% { top: -100%; } 100% { top: 100%; } }
+        .login-card {
+            text-align: center; width: 380px; padding: 45px 35px;
+            background: rgba(17,22,29,0.95); border: 1px solid #2a3441; border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 80px rgba(255,152,0,0.05);
+            position: relative; z-index: 1;
+            animation: loginCardIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+        }
+        @keyframes loginCardIn {
+            from { opacity: 0; transform: translateY(30px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .login-title {
+            color: #ff9800; font-family: 'Rajdhani', sans-serif; font-size: 32px;
+            font-weight: 700; letter-spacing: 6px; margin-bottom: 5px;
+            text-shadow: 0 0 20px rgba(255,152,0,0.3);
+            animation: titleGlow 3s ease-in-out infinite;
+        }
+        @keyframes titleGlow {
+            0%, 100% { text-shadow: 0 0 15px rgba(255,152,0,0.2); }
+            50% { text-shadow: 0 0 30px rgba(255,152,0,0.5); }
+        }
+        .login-subtitle { color: #8b9bb0; font-size: 12px; margin-bottom: 30px; letter-spacing: 4px; }
+        .login-input {
+            width: 100%; padding: 12px; background: #0a0e14; border: 1px solid #2a3441;
+            border-radius: 6px; color: #e8edf2; font-size: 15px; text-align: center;
+            margin-bottom: 12px; outline: none; transition: all 0.2s;
+        }
+        .login-input:focus { border-color: #ff9800; box-shadow: 0 0 0 3px rgba(255,152,0,0.1); }
+        .login-btns { display: flex; gap: 8px; }
+        .login-btn-primary {
+            flex: 1; padding: 12px; background: linear-gradient(135deg, #ff9800, #f57c00);
+            border: none; color: #fff; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; font-family: 'Rajdhani', sans-serif; letter-spacing: 2px; transition: all 0.2s;
+            position: relative; overflow: hidden;
+        }
+        .login-btn-primary::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.4s;
+        }
+        .login-btn-primary:hover { transform: scale(1.02); box-shadow: 0 5px 20px rgba(255,152,0,0.3); }
+        .login-btn-primary:hover::after { left: 100%; }
+        .login-btn-primary:active { transform: scale(0.98); }
+        .login-btn-secondary {
+            flex: 1; padding: 12px; background: transparent; border: 1px solid #3a4759;
+            color: #8b9bb0; border-radius: 6px; font-size: 14px; cursor: pointer;
+            font-family: 'Rajdhani', sans-serif; letter-spacing: 2px; transition: all 0.2s;
+        }
+        .login-btn-secondary:hover { border-color: #ff9800; color: #ff9800; }
+        .login-msg { color: #f44336; font-size: 11px; margin-top: 10px; min-height: 16px; }
+        .login-footer { color: #5a6a7e; font-size: 10px; margin-top: 15px; }
+
+        /* ====== Result Screen (Enhanced) ====== */
+        .result-container { text-align: center; width: 480px; max-width: 90vw; }
+        .result-title { font-size: 48px; margin-bottom: 30px; letter-spacing: 6px; animation: resultTitleIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+        .result-title.success { color: #4caf50; text-shadow: 0 0 25px rgba(76,175,80,0.5); }
+        .result-title.failed { color: #f44336; text-shadow: 0 0 25px rgba(244,67,54,0.5); }
+        @keyframes resultTitleIn {
+            from { opacity: 0; transform: scale(0.7); letter-spacing: 20px; }
+            to { opacity: 1; transform: scale(1); letter-spacing: 6px; }
+        }
+        .result-stats {
+            background: rgba(22,27,34,0.9); border: 1px solid #30363d; border-radius: 8px;
+            padding: 25px; margin-bottom: 25px;
+            animation: resultStatsIn 0.5s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+        }
+        @keyframes resultStatsIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #21262d; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #8b949e; font-size: 13px; }
+        .stat-val { color: #f0f6fc; font-size: 16px; font-weight: bold; }
+        .stat-val.highlight { color: #ff9800; font-size: 22px; text-shadow: 0 0 10px rgba(255,152,0,0.3); }
+        .loot-section { margin-top: 15px; text-align: left; }
+        .loot-title { color: #8b949e; font-size: 12px; margin-bottom: 8px; }
+        .loot-list { max-height: 160px; overflow-y: auto; }
+        .loot-item-row {
+            display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 12px;
+            border-bottom: 1px solid rgba(48,54,61,0.5);
+            animation: lootItemIn 0.3s ease-out backwards;
+        }
+        @keyframes lootItemIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .loot-item-row .loot-icon { font-size: 14px; margin-right: 6px; }
+        .loot-item-row .loot-val { color: #ff9800; font-weight: 600; }
+        .result-buttons {
+            display: flex; gap: 12px; justify-content: center;
+            animation: resultBtnsIn 0.5s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+        }
+        @keyframes resultBtnsIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .result-btn { padding: 12px 30px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+        .result-btn.primary { background: linear-gradient(135deg, #ff9800, #f57c00); color: #fff; }
+        .result-btn.secondary { background: #30363d; color: #8b949e; }
+        .result-btn:hover { transform: scale(1.05); box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
+        .result-btn.primary:hover { box-shadow: 0 5px 20px rgba(255,152,0,0.4); }
+
+        /* ====== Kill Feed (Enhanced) ====== */
+        #killFeed { position: absolute; top: 90px; right: 170px; max-width: 220px; }
+        .kill-item {
+            background: rgba(0,0,0,0.7); border-left: 3px solid #f44336;
+            padding: 6px 12px; margin-bottom: 4px; color: #fff; font-size: 11px;
+            font-family: var(--font-heading); font-weight: 600;
+            animation: killItemIn 0.3s ease-out, fadeOut 4s forwards;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .kill-item .kill-icon { font-size: 14px; }
+        .kill-item.headshot { border-left-color: #ff9800; }
+        .kill-item.headshot .kill-icon { color: #ff9800; }
+        @keyframes killItemIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeOut { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+        /* Kill streak */
+        #killStreak {
+            position: absolute; top: 60px; right: 170px;
+            background: rgba(139,0,0,0.6); border: 1px solid rgba(244,67,54,0.5);
+            border-radius: 4px; padding: 3px 10px; color: #fff;
+            font-family: var(--font-heading); font-size: 12px; font-weight: 700;
+            display: none; animation: streakPulse 1s ease-in-out infinite;
+        }
+        @keyframes streakPulse { 0%,100% { transform: scale(1); box-shadow: 0 0 5px rgba(244,67,54,0.3); } 50% { transform: scale(1.05); box-shadow: 0 0 15px rgba(244,67,54,0.5); } }
+
+        /* ====== Damage Numbers ====== */
+        #damageNumbers { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 98; }
+        .dmg-num {
+            position: absolute; font-family: var(--font-heading); font-weight: 700;
+            font-size: 16px; color: #fff; text-shadow: 0 0 4px rgba(0,0,0,0.8), 1px 1px 2px rgba(0,0,0,1);
+            pointer-events: none; animation: dmgNumFloat 0.8s ease-out forwards;
+        }
+        .dmg-num.headshot { color: #ff9800; font-size: 20px; }
+        .dmg-num.kill { color: #f44336; font-size: 22px; }
+        @keyframes dmgNumFloat {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(0.5); }
+            20% { transform: translate(-50%, -10px) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -50px) scale(1); }
+        }
+
+        /* ====== Screen Shake ====== */
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-3px, -2px); }
+            20% { transform: translate(2px, -3px); }
+            30% { transform: translate(-2px, 3px); }
+            40% { transform: translate(3px, 2px); }
+            50% { transform: translate(-3px, -1px); }
+            60% { transform: translate(2px, 3px); }
+            70% { transform: translate(-1px, -2px); }
+            80% { transform: translate(3px, 1px); }
+            90% { transform: translate(-2px, 2px); }
+        }
+        #gameCanvas.shake { animation: screenShake 0.3s ease-out; }
+
+        /* ====== Loot Tracker (Enhanced) ====== */
+        #lootTracker {
+            position: absolute; top: 15px; left: 15px;
+            background: rgba(10,14,20,0.75); border: 1px solid rgba(255,152,0,0.3); border-radius: 6px;
+            padding: 6px 12px; font-family: var(--font-heading); font-size: 14px;
+            color: var(--accent); font-weight: 700;
+            backdrop-filter: blur(4px);
+            transition: all 0.2s;
+        }
+        #lootTracker .loot-label { font-size: 9px; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; }
+        #lootTracker .loot-val-row { display: flex; align-items: center; gap: 4px; }
+        #lootTracker .loot-count { font-size: 10px; color: var(--text-secondary); font-weight: 400; }
+        #lootTracker.pulse { transform: scale(1.08); border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+
+        @keyframes vignettePulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+        @keyframes bossKillIn { from { opacity: 0; transform: translateX(-50%) scale(0.8); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+        @keyframes bleedPulse { 0%,100% { opacity: 0.7; box-shadow: 0 0 8px rgba(255,0,0,0.4); } 50% { opacity: 1; box-shadow: 0 0 20px rgba(255,0,0,0.8); } }
+
+        /* ====== Red Collectible Inspection Animations ====== */
+        /* Animation 1: Flip Reveal */
+        @keyframes redInspectFlip {
+            0% { transform: translate(-50%,-50%) rotateY(180deg) scale(0.8); }
+            25% { transform: translate(-50%,-50%) rotateY(0deg) scale(1); }
+            35% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(15deg) scale(1.05); }
+            50% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(-10deg) scale(1.05); }
+            65% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(5deg) scale(1.02); }
+            85% { transform: translate(-50%,-50%) rotateY(20deg) scale(1); }
+            100% { transform: translate(-50%,-50%) rotateY(90deg) scale(0.9); }
+        }
+        /* Animation 2: Lift & Rotate */
+        @keyframes redInspectLift {
+            0% { transform: translate(-50%,-50%) translateY(200px) rotateY(0deg) scale(0.3); opacity: 0; }
+            20% { transform: translate(-50%,-50%) translateY(0px) rotateY(0deg) scale(1); opacity: 1; }
+            35% { transform: translate(-50%,-50%) translateY(0px) rotateY(90deg) scale(1.05); }
+            55% { transform: translate(-50%,-50%) translateY(0px) rotateY(180deg) scale(1.05); }
+            75% { transform: translate(-50%,-50%) translateY(0px) rotateY(270deg) scale(1.02); }
+            90% { transform: translate(-50%,-50%) translateY(0px) rotateY(360deg) scale(1); }
+            100% { transform: translate(-50%,-50%) translateY(-30px) rotateY(360deg) scale(0.95); opacity: 0.8; }
+        }
+        /* Animation 3: Side Toss */
+        @keyframes redInspectToss {
+            0% { transform: translate(-50%,-50%) translateX(400px) rotateY(0deg) rotateZ(0deg) scale(0.5); opacity: 0; }
+            15% { opacity: 1; }
+            40% { transform: translate(-50%,-50%) translateX(0px) rotateY(180deg) rotateZ(15deg) scale(1.1); }
+            50% { transform: translate(-50%,-50%) translateX(0px) rotateY(180deg) rotateZ(-10deg) scale(1.05); }
+            65% { transform: translate(-50%,-50%) translateX(0px) rotateY(360deg) rotateZ(5deg) scale(1.08); }
+            80% { transform: translate(-50%,-50%) translateX(0px) rotateY(360deg) rotateZ(0deg) scale(1); }
+            100% { transform: translate(-50%,-50%) translateX(-200px) rotateY(450deg) scale(0.7); opacity: 0; }
+        }
+        /* Animation 4: Multi-Angle Display */
+        @keyframes redInspectMulti {
+            0% { transform: translate(-50%,-50%) rotateY(-90deg) rotateX(0deg) scale(0.9); }
+            15% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(0deg) scale(1.05); }
+            30% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(25deg) scale(1.05); }
+            45% { transform: translate(-50%,-50%) rotateY(0deg) rotateX(-25deg) scale(1.05); }
+            60% { transform: translate(-50%,-50%) rotateY(90deg) rotateX(0deg) scale(1.05); }
+            75% { transform: translate(-50%,-50%) rotateY(180deg) rotateX(0deg) scale(1.05); }
+            90% { transform: translate(-50%,-50%) rotateY(270deg) rotateX(0deg) scale(1.02); }
+            100% { transform: translate(-50%,-50%) rotateY(360deg) rotateX(0deg) scale(0.9); opacity: 0.7; }
+        }
+        /* Animation 5: Zoom Close-up */
+        @keyframes redInspectZoom {
+            0% { transform: translate(-50%,-50%) scale(0.1) rotateY(0deg); opacity: 0; }
+            15% { transform: translate(-50%,-50%) scale(1.8) rotateY(0deg); opacity: 1; }
+            30% { transform: translate(-50%,-50%) translateX(-50px) scale(1.8) rotateY(15deg); }
+            45% { transform: translate(-50%,-50%) translateX(50px) scale(1.8) rotateY(-15deg); }
+            60% { transform: translate(-50%,-50%) translateX(0px) scale(1.8) rotateY(0deg) rotateX(15deg); }
+            70% { transform: translate(-50%,-50%) translateX(0px) scale(1.2) rotateY(0deg) rotateX(0deg); }
+            85% { transform: translate(-50%,-50%) translateX(0px) scale(1.1) rotateY(30deg); }
+            100% { transform: translate(-50%,-50%) translateX(0px) scale(0.8) rotateY(60deg); opacity: 0.6; }
+        }
+        /* Animation 6: Coin Flip — rapid vertical coin spin with bounce */
+        @keyframes redInspectCoinFlip {
+            0% { transform: translate(-50%,-50%) translateY(-300px) rotateX(0deg) scale(0.4); opacity: 0; }
+            10% { transform: translate(-50%,-50%) translateY(0px) rotateX(360deg) scale(0.8); opacity: 1; }
+            20% { transform: translate(-50%,-50%) translateY(-80px) rotateX(720deg) scale(0.9); }
+            30% { transform: translate(-50%,-50%) translateY(0px) rotateX(1080deg) scale(0.95); }
+            40% { transform: translate(-50%,-50%) translateY(-30px) rotateX(1440deg) scale(1); }
+            50% { transform: translate(-50%,-50%) translateY(0px) rotateX(1800deg) scale(1.1); }
+            65% { transform: translate(-50%,-50%) translateY(0px) rotateX(1800deg) rotateY(30deg) scale(1.1); }
+            80% { transform: translate(-50%,-50%) translateY(0px) rotateX(1800deg) rotateY(-15deg) scale(1.05); }
+            100% { transform: translate(-50%,-50%) translateY(-100px) rotateX(2160deg) scale(0.8); opacity: 0.5; }
+        }
+        /* Animation 7: Slide Showcase — horizontal slide-in, showcase, slide-out */
+        @keyframes redInspectSlide {
+            0% { transform: translate(-50%,-50%) translateX(-500px) rotateZ(-20deg) scale(0.5); opacity: 0; }
+            15% { transform: translate(-50%,-50%) translateX(0px) rotateZ(0deg) scale(1); opacity: 1; }
+            25% { transform: translate(-50%,-50%) translateX(0px) rotateY(0deg) rotateZ(5deg) scale(1.05); }
+            40% { transform: translate(-50%,-50%) translateX(0px) rotateY(0deg) rotateZ(-5deg) scale(1.05); }
+            55% { transform: translate(-50%,-50%) translateX(0px) rotateY(180deg) rotateZ(0deg) scale(1.05); }
+            70% { transform: translate(-50%,-50%) translateX(0px) rotateY(360deg) rotateZ(0deg) scale(1); }
+            85% { transform: translate(-50%,-50%) translateX(100px) rotateZ(10deg) scale(0.9); }
+            100% { transform: translate(-50%,-50%) translateX(500px) rotateZ(20deg) scale(0.5); opacity: 0; }
+        }
+        /* Animation 8: Drop & Bounce — falls from above with gravity bounce */
+        @keyframes redInspectDrop {
+            0% { transform: translate(-50%,-50%) translateY(-400px) rotateZ(0deg) scale(0.6); opacity: 0; }
+            12% { opacity: 1; }
+            20% { transform: translate(-50%,-50%) translateY(0px) rotateZ(0deg) scale(1.2); }
+            28% { transform: translate(-50%,-50%) translateY(-60px) rotateZ(10deg) scale(1.05); }
+            38% { transform: translate(-50%,-50%) translateY(0px) rotateZ(-5deg) scale(1.1); }
+            48% { transform: translate(-50%,-50%) translateY(-25px) rotateZ(3deg) scale(1.05); }
+            58% { transform: translate(-50%,-50%) translateY(0px) rotateZ(0deg) scale(1.08); }
+            70% { transform: translate(-50%,-50%) translateY(0px) rotateY(180deg) scale(1.08); }
+            85% { transform: translate(-50%,-50%) translateY(0px) rotateY(360deg) scale(1); }
+            100% { transform: translate(-50%,-50%) translateY(0px) rotateY(360deg) scale(0.7); opacity: 0.4; }
+        }
+        /* Animation 9: Tumble Roll — forward tumble like rolling on ground */
+        @keyframes redInspectTumble {
+            0% { transform: translate(-50%,-50%) translateX(-200px) translateY(50px) rotateX(0deg) scale(0.5); opacity: 0; }
+            10% { opacity: 1; }
+            25% { transform: translate(-50%,-50%) translateX(-100px) translateY(0px) rotateX(180deg) scale(0.8); }
+            40% { transform: translate(-50%,-50%) translateX(0px) translateY(-30px) rotateX(360deg) scale(1.1); }
+            50% { transform: translate(-50%,-50%) translateX(0px) translateY(0px) rotateX(360deg) scale(1.1); }
+            60% { transform: translate(-50%,-50%) translateX(100px) translateY(-30px) rotateX(540deg) scale(0.9); }
+            70% { transform: translate(-50%,-50%) translateX(100px) translateY(0px) rotateX(720deg) scale(0.8); }
+            80% { transform: translate(-50%,-50%) translateX(0px) translateY(0px) rotateX(720deg) rotateY(180deg) scale(1); }
+            100% { transform: translate(-50%,-50%) translateX(0px) translateY(0px) rotateX(720deg) rotateY(360deg) scale(0.7); opacity: 0.5; }
+        }
+        /* Animation 10: Pulse Showcase — centered showcase with pulsing scale and slow rotation */
+        @keyframes redInspectPulse {
+            0% { transform: translate(-50%,-50%) scale(0) rotateY(0deg); opacity: 0; }
+            15% { transform: translate(-50%,-50%) scale(1.3) rotateY(0deg); opacity: 1; }
+            25% { transform: translate(-50%,-50%) scale(1) rotateY(0deg); }
+            35% { transform: translate(-50%,-50%) scale(1.15) rotateY(0deg); }
+            45% { transform: translate(-50%,-50%) scale(1) rotateY(0deg); }
+            55% { transform: translate(-50%,-50%) scale(1.12) rotateY(90deg); }
+            70% { transform: translate(-50%,-50%) scale(1) rotateY(180deg); }
+            80% { transform: translate(-50%,-50%) scale(1.08) rotateY(270deg); }
+            100% { transform: translate(-50%,-50%) scale(0.5) rotateY(360deg); opacity: 0.3; }
+        }
+        @keyframes redGlowPulse {
+            0%,100% { opacity: 0.3; transform: translate(-50%,-50%) scale(0.8); }
+            50% { opacity: 0.7; transform: translate(-50%,-50%) scale(1.2); }
+        }
+        @keyframes redParticleFloat {
+            0% { transform: translateY(0) scale(1); opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 0.8; }
+            100% { transform: translateY(-120px) scale(0.3); opacity: 0; }
+        }
+        /* Inspect button on red items */
+        .inspect-red-btn {
+            position: absolute; top: 2px; right: 2px;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,180,50,0.9), rgba(255,80,30,0.7));
+            border: 1px solid rgba(255,200,80,0.8);
+            cursor: pointer; z-index: 10;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; color: #fff;
+            box-shadow: 0 0 8px rgba(255,100,30,0.6);
+            animation: inspectBtnPulse 1.5s ease-in-out infinite;
+            pointer-events: auto;
+        }
+        .inspect-red-btn:hover {
+            transform: scale(1.3);
+            box-shadow: 0 0 15px rgba(255,150,50,0.9);
+        }
+        @keyframes inspectBtnPulse {
+            0%,100% { box-shadow: 0 0 6px rgba(255,100,30,0.5); }
+            50% { box-shadow: 0 0 12px rgba(255,150,50,0.8); }
+        }
     </style>
 </head>
 <body>
-    <!-- ====== Login Screen ====== -->
-    <div id="loginScreen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0d1117,#161b22,#0d1117);display:flex;justify-content:center;align-items:center;z-index:500;">
-        <div style="text-align:center;width:360px;padding:40px;background:rgba(22,27,34,0.95);border:1px solid #30363d;border-radius:12px;">
-            <h1 style="color:#ff9800;font-size:28px;margin-bottom:5px;">战术突击</h1>
-            <p style="color:#8b949e;font-size:12px;margin-bottom:25px;">搜 · 打 · 撤</p>
-            <input id="loginUsername" type="text" placeholder="输入用户名" maxlength="20" style="width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f0f6fc;font-size:15px;text-align:center;margin-bottom:12px;outline:none;" onkeydown="if(event.key==='Enter')loginUser()">
-            <div style="display:flex;gap:8px;">
-                <button onclick="loginUser()" style="flex:1;padding:12px;background:linear-gradient(135deg,#ff9800,#f57c00);border:none;color:#fff;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;">进入游戏</button>
-                <button onclick="registerUser()" style="flex:1;padding:12px;background:#30363d;border:1px solid #484f58;color:#f0f6fc;border-radius:6px;font-size:14px;cursor:pointer;">新建存档</button>
+    <!-- ====== Loading Screen ====== -->
+    <div id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-logo">
+                <h1 class="loading-title">战术突击</h1>
+                <p class="loading-subtitle">搜 · 打 · 撤</p>
             </div>
-            <p id="loginMsg" style="color:#f44336;font-size:11px;margin-top:10px;min-height:16px;"></p>
-            <p style="color:#6e7681;font-size:10px;margin-top:15px;">存档保存在浏览器本地</p>
+            <div class="loading-progress-container">
+                <div class="loading-progress-bar">
+                    <div class="loading-progress-fill" id="loadingProgressFill"></div>
+                </div>
+                <div class="loading-progress-text">
+                    <span id="loadingPercent">0%</span>
+                    <span id="loadingStatus">正在初始化...</span>
+                </div>
+            </div>
+            <div class="loading-tips" id="loadingTips">
+                <p>💡 提示：按 K 键打开技能树，升级获得技能点</p>
+            </div>
         </div>
     </div>
+
+    <!-- ====== Login Screen ====== -->
+    <div id="loginScreen">
+        <div class="login-card">
+            <h1 class="login-title">战术突击</h1>
+            <p class="login-subtitle">搜 · 打 · 撤</p>
+            <input id="loginUsername" type="text" class="login-input" placeholder="输入用户名" maxlength="20" onkeydown="if(event.key==='Enter')loginUser()">
+            <div class="login-btns">
+                <button class="login-btn-primary" onclick="loginUser()">进入游戏</button>
+                <button class="login-btn-secondary" onclick="registerUser()">新建存档</button>
+            </div>
+            <p id="loginMsg" class="login-msg"></p>
+            <p class="login-footer">存档保存在浏览器本地</p>
+        </div>
+    </div>
+    <!-- Damage numbers overlay -->
+    <div id="damageNumbers"></div>
 
     <!-- ====== Lobby ====== -->
     <div id="lobbyScreen">
@@ -345,13 +1011,16 @@
                 <li onclick="switchLobbyTab('inventory')">📦 仓库</li>
                 <li onclick="switchLobbyTab('shop')">🛒 交易市场</li>
                 <li onclick="switchLobbyTab('missions')">📋 任务</li>
+                <li onclick="switchLobbyTab('upgrade')">⬆️ 升级</li>
                 <li onclick="switchLobbyTab('stats')">📊 统计</li>
                 <li onclick="switchLobbyTab('mail')">📬 邮件 <span id="mailBadge" style="background:#f44336;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;display:none;">0</span></li>
+                <li onclick="if(typeof GameSettings!=='undefined')GameSettings.openSettings()">⚙️ 设置</li>
             </ul>
             <div class="lobby-money">
                 <div class="money-val">₵ <span id="lobbyMoney">1,000,000</span></div>
                 <div class="money-label">持有资金</div>
                 <div style="margin-top:8px;font-size:10px;color:#6e7681;">仓库估值: ₵<span id="stashValueSidebar">0</span></div>
+                <div style="margin-top:4px;font-size:10px;color:#6e7681;">负重: <span id="weightDisplay">0/70kg</span></div>
             </div>
         </div>
         <div class="lobby-main">
@@ -396,6 +1065,8 @@
                     • 开局默认武器：突击步枪 + 手枪<br>
                     • 在仓库页面可管理网格物品，市场可买卖装备
                 </p>
+                <!-- Loadout Preset Panel -->
+                <div id="loadoutPanel" class="loadout-panel"></div>
             </div>
 
             <div id="tab-inventory" class="lobby-section">
@@ -410,7 +1081,7 @@
                         </div>
                     </div>
                     <!-- MIDDLE: Carry-in Inventory (胸挂/口袋/背包/安全箱) -->
-                    <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:250px;">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:380px;">
                         <div class="inv-section">
                             <div class="inv-section-header">🎽 胸挂 <span class="inv-count" id="rigCount">0/0</span></div>
                             <div id="rigGrid" class="inv-mini-grid"></div>
@@ -431,6 +1102,7 @@
                     <!-- RIGHT: Stash -->
                     <div style="flex:2;min-width:400px;">
                         <div class="cat-title">📦 仓库 <span style="font-size:10px;color:#ff9800;">库存估值 ₵<span id="stashValue">0</span></span></div>
+                        <div id="stashKeychainContainer" style="margin-bottom:10px;"></div>
                         <div id="stashGridContainer"></div>
                     </div>
                 </div>
@@ -457,6 +1129,12 @@
                 <div id="statsContent"><p style="color:#8b949e;">加载中...</p></div>
             </div>
 
+            <div id="tab-upgrade" class="lobby-section">
+                <h2 class="section-title">⬆️ 升级中心</h2>
+                <p style="color:#8b949e;font-size:13px;margin-bottom:20px;">提交材料和资金升级负重上限与仓库容量</p>
+                <div id="upgradeContent"><p style="color:#8b949e;">加载中...</p></div>
+            </div>
+
             <div id="tab-shop" class="lobby-section">
                 <h2 class="section-title">交易市场</h2>
                 <p style="color:#8b949e;font-size:13px;margin-bottom:20px;">买卖物资装备（出售价为购买价的50%）</p>
@@ -471,18 +1149,85 @@
     <!-- ====== Canvas & Overlays ====== -->
     <canvas id="gameCanvas"></canvas>
     <div id="crosshair"><div class="crosshair-dot"></div><div class="crosshair-ring"></div></div>
+    <!-- Hit marker -->
+    <div id="hitMarker">
+        <div class="hit-marker-line tl"></div><div class="hit-marker-line tr"></div>
+        <div class="hit-marker-line bl"></div><div class="hit-marker-line br"></div>
+    </div>
+    <div id="damageArcs"></div>
+    <!-- Directional damage indicator -->
+    <div id="damageIndicator"><div class="damage-arrow"></div></div>
     <div id="damageOverlay"></div>
-    <div id="healthVignette" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;opacity:0;transition:opacity 0.5s;background:radial-gradient(ellipse at center,transparent 50%,rgba(200,0,0,0.35) 100%);\"></div>
-    <div id="crouchIndicator" style="position:fixed;bottom:40px;left:50%;transform:translateX(-50%);color:#4caf50;font-size:14px;font-weight:bold;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:60;\">⬇ 蹲伏中</div>
-    <div id="clickToPlay">点击画面开始游戏<br><span>ESC 暂停</span></div>
+    <div id="healthVignette" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;opacity:0;transition:opacity 0.5s;background:radial-gradient(ellipse at center,transparent 50%,rgba(200,0,0,0.35) 100%);"></div>
+    <div id="crouchIndicator" style="position:fixed;bottom:40px;left:50%;transform:translateX(-50%);color:#4caf50;font-size:14px;font-weight:bold;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:60;">⬇ 蹲伏中</div>
+    <div id="clickToPlay">点击画面开始游戏<br><span>ESC / P 暂停</span></div>
+    <!-- 暂停按钮（备用，点击打开暂停菜单） -->
+    <button id="pauseBtn" onclick="if(typeof GameSettings!=='undefined')GameSettings.openPauseMenu()" style="position:fixed;top:10px;right:10px;z-index:150;background:rgba(0,0,0,0.6);color:#fff;border:1px solid #555;border-radius:4px;padding:6px 12px;cursor:pointer;font-size:14px;display:none;">⏸ 暂停</button>
+
+    <!-- ====== Red Collectible Inspection Overlay ====== -->
+    <div id="redInspectionOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:200;">
+        <div id="redInspectGlow" style="position:absolute;top:50%;left:50%;width:600px;height:600px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,50,20,0.15) 0%,rgba(255,180,0,0.08) 30%,transparent 70%);opacity:0;transition:opacity 0.5s;"></div>
+        <div id="redInspectScene" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;height:400px;perspective:1200px;">
+            <div id="redInspectCard" style="position:absolute;top:50%;left:50%;width:200px;height:200px;transform-style:preserve-3d;transform:translate(-50%,-50%);">
+                <div id="redInspectFace" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:12px;backface-visibility:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(20,5,5,0.7),rgba(60,15,5,0.7));border:3px solid rgba(255,100,50,0.6);box-shadow:0 0 40px rgba(255,80,30,0.5),inset 0 0 30px rgba(255,50,20,0.2);overflow:hidden;">
+                </div>
+                <div id="redInspectBack" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:12px;backface-visibility:hidden;transform:rotateY(180deg);background:linear-gradient(135deg,rgba(40,10,10,0.8),rgba(80,20,5,0.8));border:3px solid rgba(255,150,80,0.4);display:flex;align-items:center;justify-content:center;font-size:48px;">
+                    <span style="filter:drop-shadow(0 0 10px rgba(255,100,50,0.6));">💎</span>
+                </div>
+            </div>
+            <div id="redInspectParticles" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>
+        </div>
+        <div id="redInspectInfo" style="position:absolute;top:72%;left:50%;transform:translateX(-50%);text-align:center;opacity:0;transition:opacity 0.5s 0.8s;">
+            <div id="redInspectName" style="font-size:22px;font-weight:bold;color:#ffcc66;text-shadow:0 0 10px rgba(255,180,50,0.8),0 0 20px rgba(255,100,30,0.5);"></div>
+            <div id="redInspectValue" style="font-size:16px;color:#ff9944;margin-top:4px;text-shadow:0 0 8px rgba(255,120,40,0.6);"></div>
+            <div id="redInspectRarity" style="font-size:13px;color:#ff4422;margin-top:2px;text-transform:uppercase;letter-spacing:3px;font-weight:bold;"></div>
+        </div>
+    </div>
 
     <!-- ====== Game HUD ====== -->
     <div id="gameHUD">
+        <!-- Compass -->
+        <div id="compass"><div id="compassStrip"></div><div id="compassNeedle"></div></div>
+        <div id="compassObjectives"></div>
         <div id="timerPanel"><div class="timer-box"><div class="timer-label">撤离倒计时</div><div class="timer-value" id="timerDisplay">15:00</div></div></div>
         <div id="minimap"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
+        <!-- Full Map Overlay (M to open, Tab to close, click to mark) -->
+        <div id="fullMapOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:300;backdrop-filter:blur(4px);pointer-events:auto;">
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                <canvas id="fullMapCanvas" width="600" height="600" style="border:2px solid rgba(255,152,0,0.4);border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,0.8);cursor:crosshair;background:#0a0a0a;"></canvas>
+                <div style="margin-top:8px;color:#8b949e;font-size:12px;">左键标点 | 右键删除标记 | Tab关闭</div>
+                <div id="fullMapMarkersList" style="position:absolute;top:10px;right:-160px;width:140px;text-align:left;"></div>
+            </div>
+        </div>
         <div id="killFeed"></div>
+        <div id="killStreak"></div>
+        <!-- Loot tracker -->
+        <div id="lootTracker"><div class="loot-label">战利品</div><div class="loot-val-row">₵ <span id="hudLootValue">0</span> <span class="loot-count" id="hudLootCount">0件</span></div></div>
+        <!-- Player Level & XP (左上角，避免遮挡罗盘) -->
+        <div id="playerLevelHUD" style="position:fixed;top:55px;left:10px;background:rgba(0,0,0,0.7);border:1px solid #ff9800;border-radius:6px;padding:4px 12px;text-align:center;z-index:60;pointer-events:none;">
+            <div style="color:#ff9800;font-size:12px;font-weight:bold;">🎖️ Lv.<span id="hudPlayerLevel">1</span></div>
+            <div style="width:100px;height:3px;background:#1a1a1a;border-radius:2px;margin-top:3px;overflow:hidden;">
+                <div id="hudXPBar" style="height:100%;width:0%;background:linear-gradient(90deg,#ff9800,#ffc107);border-radius:2px;transition:width 0.3s;"></div>
+            </div>
+            <div style="color:#8b949e;font-size:8px;margin-top:2px;"><span id="hudCurrentXP">0</span>/<span id="hudNextXP">1000</span></div>
+        </div>
+        <!-- Marker direction indicator -->
+        <div id="markerGuide" style="display:none;position:fixed;top:12%;left:50%;z-index:200;pointer-events:none;transform:translateX(-50%);">
+            <div id="markerDist" style="text-align:center;font-size:14px;font-weight:bold;text-shadow:0 0 4px rgba(0,0,0,0.8);color:#ffeb3b;background:rgba(0,0,0,0.5);padding:4px 12px;border-radius:8px;">0m</div>
+        </div>
 
         <div id="searchPrompt"><div class="prompt-box"><div class="prompt-title" id="promptTitle">武器箱</div><div class="prompt-hint">按 F 搜索</div></div></div>
+
+        <!-- Key building prompt -->
+        <div id="keyBuildingPrompt" style="position:absolute;bottom:200px;left:50%;transform:translateX(-50%);display:none;z-index:55;">
+            <div style="background:rgba(0,0,0,0.8);border:1px solid #ff9800;border-radius:4px;padding:4px 12px;text-align:center;">
+                <div id="kbPromptTitle" style="font-size:12px;color:#fff;font-weight:bold;">钥匙房 (锁定)</div>
+                <div id="kbPromptHint" style="font-size:10px;color:#ff9800;">需要 钥匙卡 [F] 开锁</div>
+            </div>
+        </div>
+
+        <!-- Key notification -->
+        <div id="keyNotification" style="position:absolute;top:120px;left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(0,0,0,0.85);color:#ff9800;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:bold;border:1px solid #ff9800;opacity:0;transition:all 0.3s;z-index:60;pointer-events:none;"></div>
 
         <!-- Ground loot prompt -->
         <div id="groundLootPrompt" style="position:absolute;bottom:200px;left:50%;transform:translateX(-50%);display:none;z-index:55;">
@@ -523,6 +1268,8 @@
             <div class="ammo-main"><span id="magAmmo">30</span><span class="ammo-reserve"> / <span id="reserveAmmo">90</span></span></div>
             <div class="ammo-type" id="ammoType">突击步枪</div>
         </div>
+
+        <div style="position:fixed;bottom:8px;right:8px;font-size:11px;color:rgba(255,255,255,0.35);z-index:50;pointer-events:none;">[B] 背包</div>
     </div>
 
     <!-- ====== Search Progress Overlay ====== -->
@@ -544,7 +1291,7 @@
             <div id="searchBackpackGrid" style="display:none;"></div>
             <div id="searchSecureGrid" style="display:none;"></div>
             <!-- LEFT: 人物装备 + 随身储物 (与备战仓库一致) -->
-            <div class="search-panel" style="width:290px;flex-shrink:0;">
+            <div class="search-panel" style="width:380px;flex-shrink:0;">
                 <h3>随身装备</h3>
                 <!-- 人物装备槽 (紧凑版) -->
                 <div style="display:flex;gap:6px;margin-bottom:6px;">
@@ -558,6 +1305,10 @@
                 </div>
                 <!-- 随身储物 (与备战中栏顺序一致) -->
                 <div style="display:flex;flex-direction:column;gap:4px;">
+                    <div class="inv-section">
+                        <div class="inv-section-header">🔑 钥匙链</div>
+                        <div id="sKeychainGrid" class="inv-mini-grid"></div>
+                    </div>
                     <div class="inv-section">
                         <div class="inv-section-header">🎽 胸挂</div>
                         <div id="sRigGrid" class="inv-mini-grid"></div>
@@ -593,6 +1344,51 @@
         </div>
     </div>
 
+    <!-- ====== In-Game Backpack Screen (press B) ====== -->
+    <div id="backpackScreen">
+        <div class="search-panel">
+            <h3>🎒 背包 <span class="panel-subtitle">按 B / Tab / Esc 关闭</span></h3>
+            <!-- 人物装备槽 -->
+            <div style="display:flex;gap:6px;margin-bottom:6px;">
+                <div id="bpCharSlots" style="display:grid;grid-template-columns:repeat(4,26px);grid-template-rows:repeat(8,26px);gap:1px;flex-shrink:0;"></div>
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+                    <div id="bpPrimary1" style="background:rgba(0,0,0,0.4);border:1px solid #30363d;border-radius:2px;height:26px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">主武器1</div>
+                    <div id="bpPrimary2" style="background:rgba(0,0,0,0.4);border:1px solid #30363d;border-radius:2px;height:26px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">主武器2</div>
+                    <div style="font-size:8px;color:#666;text-align:center;margin-top:2px;">负重</div>
+                </div>
+            </div>
+            <!-- 储物区 -->
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <div class="inv-section">
+                    <div class="inv-section-header">🔑 钥匙链</div>
+                    <div id="bpKeychainGrid" class="inv-mini-grid"></div>
+                </div>
+                <div class="inv-section">
+                    <div class="inv-section-header">🎽 胸挂</div>
+                    <div id="bpRigGrid" class="inv-mini-grid"></div>
+                </div>
+                <div class="inv-section">
+                    <div class="inv-section-header">👝 口袋</div>
+                    <div id="bpPocketGrid" class="inv-mini-grid"></div>
+                </div>
+                <div class="inv-section">
+                    <div class="inv-section-header">🎒 背包</div>
+                    <div id="bpBackpackGrid" class="inv-mini-grid"></div>
+                </div>
+                <div class="inv-section secure-section">
+                    <div class="inv-section-header">🔒 安全箱</div>
+                    <div id="bpSecureGrid" class="inv-mini-grid"></div>
+                </div>
+            </div>
+            <div style="font-size:9px;color:#666;text-align:right;margin-top:2px;">负重 <span id="bpWeight">0</span>/70kg</div>
+            <div class="loot-value-display" style="margin-top:2px;">战利品: <span id="bpLootValue">₵0</span></div>
+            <div class="search-actions" style="margin-top:4px;">
+                <button class="sort-btn" onclick="sortBackpackBP()" style="flex:1;padding:10px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;background:linear-gradient(135deg,#2196f3,#1976d2);color:#fff;">📦 整理背包</button>
+                <button class="btn-close" onclick="closeBackpack()" style="flex:1;">✕ 关闭</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ====== Result Screen ====== -->
     <div id="resultScreen">
         <div class="result-container">
@@ -615,7 +1411,47 @@
     <script src="map/military_base.js"></script>
     <script src="map/industrial_port.js"></script>
     <script src="map/forest_outpost.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- three.js r128：本地副本，不再走 CDN。
+         原先是 cdnjs 引用，断网/CDN 被拦截时会白屏，而且因为代码里到处是
+         `typeof THREE !== 'undefined'` 守卫，控制台不会报红字 —— 极难诊断。
+         本地化后彻底离线可用。见 docs/architecture/adr/ADR-001 第 6 节。 -->
+    <script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="vendor/SkeletonUtils.js"></script>
+    <!-- Three.js 后期处理库 -->
+    <script src="vendor/postprocessing/Pass.js"></script>
+    <script src="vendor/shaders/CopyShader.js"></script>
+    <script src="vendor/shaders/FXAAShader.js"></script>
+    <script src="vendor/shaders/LuminosityHighPassShader.js"></script>
+    <script src="vendor/postprocessing/EffectComposer.js"></script>
+    <script src="vendor/postprocessing/RenderPass.js"></script>
+    <script src="vendor/postprocessing/ShaderPass.js"></script>
+    <script src="vendor/postprocessing/MaskPass.js"></script>
+    <script src="vendor/postprocessing/UnrealBloomPass.js"></script>
+    <script src="red_collectibles_config.js"></script>
+    <script src="collectibles_config.js"></script>
+    <script src="weapon_ads_system.js"></script>
+    <script src="boss_system_v2.js"></script>
+    <script src="boss_system_v2_extensions.js"></script>
+    <script src="skill_tree_ui.js"></script>
+    <script src="resource_loader.js"></script>
+    <!-- 渲染管线与体验增强模块（只读全局状态，不改变玩法数据） -->
+    <script src="render_pipeline.js"></script>
+    <script src="world_polish.js"></script>
+    <script src="perf_manager.js"></script>
+    <script src="hud_feedback.js"></script>
+    <script src="pbr_textures.js"></script>
+    <script src="item_models.js"></script>
+    <script src="item_icons.js"></script>
+    <script src="inspect_viewer.js"></script>
+    <script src="audio_engine.js"></script>
+    <script src="weapon_fx.js"></script>
+    <script src="world_props.js"></script>
+    <script src="performance_guard.js"></script>
     <script src="game.js"></script>
+    <script src="enemy_ai.js"></script>
+    <script src="animation_enhancement.js"></script>
+    <script src="settings.js"></script>
+    <script src="graphics_enhancement.js"></script>
 </body>
 </html>

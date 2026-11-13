@@ -20,3 +20,25 @@ node_modules/
 # Build output
 dist/
 build/
+
+# QA 运行产物（截图/日志/快照按需归档，不入库）
+tests/evidence/
+
+# ---- 手工备份：历史交给 git，不再用 .bak 文件 ----
+*.bak
+*.bak2
+*.bak3
+*.orig
+*.rej
+
+# ---- 根目录临时截图（评审/调试产物，非运行时资源）----
+/screenshot*.png
+/ui_*.png
+
+# 注意：bug.txt 是项目唯一的缺陷台账（敌人攻击动作模组、方案 A/B/C、涉及代码位置），
+# 属于「记录性」文件，必须纳入版本管理。同理，根目录的任何 *.md 文档、台账、规格都不要排除。
+# 排除原则：只排除「可再生的」和「本地的」（.bak / 截图 / evidence / node_modules / .workbuddy），
+# 不排除「记录性的」（bug.txt / 台账 / 设计规格）。
+
+# ---- 工具/会话临时目录 ----
+.workbuddy/
