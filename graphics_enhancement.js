@@ -706,8 +706,15 @@ const GraphicsEnhancement = (function () {
                 if (!obj.userData.textureUpgraded) {
                     const groundKind = (typeof MAP_DATA !== 'undefined' && MAP_DATA && MAP_DATA.theme &&
                         MAP_DATA.theme.groundSurface) || 'grass';
+                    // tile 是「一张贴图铺几米」，所以必须跟着贴图边长走：
+                    // 草地 512² → 5.5m/张（1.07 cm/texel），砾石/沥青 256² → 2.75m/张（同样 1.07 cm/texel）。
+                    // 写死 5.5 的后果不是「稍微糙一点」，而是 256² 那两张密度直接翻倍，
+                    // 砾石颗粒被放大成拳头大、沥青失去细砂质感。
+                    const _texSize = (typeof PBRTextures !== 'undefined' && PBRTextures.sizeOf)
+                        ? (PBRTextures.sizeOf(groundKind) || 256) : 256;
+                    const _groundTile = 2.75 * (_texSize / 256);
                     const okPBR = applyPBR(obj, groundKind, {
-                        tile: 5.5, normalScale: 1.1, color: 0xffffff,
+                        tile: _groundTile, normalScale: 1.1, color: 0xffffff,
                         roughness: 1.0, metalness: 0.0, envMapIntensity: 0.18,
                     });
                     if (!okPBR) {
@@ -843,6 +850,20 @@ const GraphicsEnhancement = (function () {
                     obj.userData.textureUpgraded = true;
                 }
             }
+
+            // ---- 兜底：没被任何分支认领的标准材质，至少把 IBL 强度压到场景量级 ----
+            //
+            // 为什么必须有这一段：建筑的窗户、饰条、女儿墙、栏杆等子网格在建的时候
+            // 没有打 userData.surface 标签，于是从上面的 if 链里一路漏下来，
+            // envMapIntensity 保持 Three.js 默认值 1.0 —— 而地面是 0.18。
+            // 实测 6467 个盒体网格停在这个状态：它们不参与贴图升级倒也罢了，
+            // 但吃满 IBL 会让整栋楼比脚下的地亮 5 倍，这正是「画面塑料感」的主因。
+            //
+            // 只改反射强度，不碰 color / map / 贴图，所以不会改变任何物体的辨识度，
+            // 也不会触发着色器重编译（envMapIntensity 是 uniform）。
+            if (mat.isMeshStandardMaterial && !mat.transparent && mat.envMapIntensity > 0.4 && !obj.userData.textureUpgraded) {
+                mat.envMapIntensity = 0.2;
+            }
         });
     }
 
@@ -865,7 +886,11 @@ const GraphicsEnhancement = (function () {
             PBRTextures.init(renderer);
             const _groundKind = (typeof MAP_DATA !== 'undefined' && MAP_DATA &&
                 MAP_DATA.theme && MAP_DATA.theme.groundSurface) || 'grass';
-            PBRTextures.warmup(['concrete', 'asphalt', 'grass', 'dirt', 'gravel',
+            // 预热列表只放「实际会被 applyPBR 用到的种类」。
+            // 'dirt' 曾经在这里，但它从来没被任何 surface 分支选中过 ——
+            // 它只是 audio_engine 里一个音效分支的名字，和贴图种类同名纯属巧合。
+            // 每多预热一种 256² 贴图，就是多一套 albedo+normal+roughness 的显存与烘焙时间。
+            PBRTextures.warmup(['concrete', 'asphalt', 'grass', 'gravel',
                 'corrugated', 'metal', 'wood', 'roof', _groundKind]);
         }
 

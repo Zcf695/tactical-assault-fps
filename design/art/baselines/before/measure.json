@@ -1,0 +1,703 @@
+{
+  "tag": "before",
+  "at": "2026-11-13T09:11:50.864Z",
+  "headless": true,
+  "poses": [
+    {
+      "key": "近景",
+      "pitch": -0.6109,
+      "note": "俯角35° 看地面纹理 + 近处道具反射"
+    },
+    {
+      "key": "远景",
+      "pitch": -0.0524,
+      "note": "俯角3° 看大气/雾/天空/地图身份"
+    }
+  ],
+  "shots": [
+    {
+      "map": "military_base",
+      "mapLabel": "军事禁区",
+      "pose": "近景",
+      "poseNote": "俯角35° 看地面纹理 + 近处道具反射",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -135
+        },
+        "yaw": 3.1416,
+        "pitch": -0.6109
+      },
+      "shot": "military_base_近景.png",
+      "measure": {
+        "fog": {
+          "near": 80,
+          "far": 260,
+          "color": "#776853"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 26,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 8961,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 13,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 126,
+            "value": 1
+          },
+          "wood": {
+            "count": 81,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "gravel",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    },
+    {
+      "map": "military_base",
+      "mapLabel": "军事禁区",
+      "pose": "远景",
+      "poseNote": "俯角3° 看大气/雾/天空/地图身份",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -135
+        },
+        "yaw": 3.1416,
+        "pitch": -0.0524
+      },
+      "shot": "military_base_远景.png",
+      "measure": {
+        "fog": {
+          "near": 80,
+          "far": 260,
+          "color": "#776853"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 28,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 8961,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 13,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 126,
+            "value": 1
+          },
+          "wood": {
+            "count": 81,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "gravel",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    },
+    {
+      "map": "forest_outpost",
+      "mapLabel": "密林禁区",
+      "pose": "近景",
+      "poseNote": "俯角35° 看地面纹理 + 近处道具反射",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -130
+        },
+        "yaw": 3.1416,
+        "pitch": -0.6109
+      },
+      "shot": "forest_outpost_近景.png",
+      "measure": {
+        "fog": {
+          "near": 40,
+          "far": 175,
+          "color": "#6e7b5d"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 28,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 4421,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 33,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 105,
+            "value": 1
+          },
+          "wood": {
+            "count": 89,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "grass",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    },
+    {
+      "map": "forest_outpost",
+      "mapLabel": "密林禁区",
+      "pose": "远景",
+      "poseNote": "俯角3° 看大气/雾/天空/地图身份",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -130
+        },
+        "yaw": 3.1416,
+        "pitch": -0.0524
+      },
+      "shot": "forest_outpost_远景.png",
+      "measure": {
+        "fog": {
+          "near": 40,
+          "far": 175,
+          "color": "#6e7b5d"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 28,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 4421,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 33,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 105,
+            "value": 1
+          },
+          "wood": {
+            "count": 89,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "grass",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    },
+    {
+      "map": "industrial_port",
+      "mapLabel": "港口城市",
+      "pose": "近景",
+      "poseNote": "俯角35° 看地面纹理 + 近处道具反射",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -130
+        },
+        "yaw": 3.1416,
+        "pitch": -0.6109
+      },
+      "shot": "industrial_port_近景.png",
+      "measure": {
+        "fog": {
+          "near": 95,
+          "far": 290,
+          "color": "#b0885d"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 28,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 6497,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 29,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 66,
+            "value": 1
+          },
+          "wood": {
+            "count": 112,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "asphalt",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    },
+    {
+      "map": "industrial_port",
+      "mapLabel": "港口城市",
+      "pose": "远景",
+      "poseNote": "俯角3° 看大气/雾/天空/地图身份",
+      "poseApplied": {
+        "spawn": {
+          "x": 0,
+          "z": -130
+        },
+        "yaw": 3.1416,
+        "pitch": -0.0524
+      },
+      "shot": "industrial_port_远景.png",
+      "measure": {
+        "fog": {
+          "near": 95,
+          "far": 290,
+          "color": "#b0885d"
+        },
+        "ibl": "on",
+        "cameraY": 1.7,
+        "dpr": 1,
+        "drawCallsLastPass_UNRELIABLE": 1,
+        "programs": 28,
+        "envHigh": [
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#6e757c"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 0.5,
+            "color": "#080a0d"
+          },
+          {
+            "surface": "untagged",
+            "value": 1,
+            "color": "#c9a24a"
+          }
+        ],
+        "envBySurface": {
+          "untagged": {
+            "count": 6497,
+            "value": 0.5
+          },
+          "prop": {
+            "count": 29,
+            "value": 1
+          },
+          "sandbag": {
+            "count": 66,
+            "value": 1
+          },
+          "wood": {
+            "count": 112,
+            "value": 1
+          }
+        },
+        "ground": {
+          "kind": "asphalt",
+          "tileFromUV": 5.5,
+          "mapSize": 300,
+          "color": "#ffffff",
+          "envMapIntensity": 0.18
+        }
+      }
+    }
+  ]
+}

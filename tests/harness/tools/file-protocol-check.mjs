@@ -38,7 +38,7 @@ function resolveChrome() {
   return null;
 }
 
-const evidenceDir = path.join(ROOT, 'tests', 'evidence', `${stamp()}-fileproto`);
+const evidenceDir = path.join(ROOT, 'tests', 'evidence', 'qa', `${stamp()}-fileproto`);
 fs.mkdirSync(evidenceDir, { recursive: true });
 
 const exe = resolveChrome();

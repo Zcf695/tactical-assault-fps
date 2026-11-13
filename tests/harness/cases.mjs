@@ -222,27 +222,35 @@ export const cases = [
     auto: '全自动',
     async run(ctx) {
       const probes = await import('./probes.mjs');
-      const DESIGN_TILE = 5.5; // graphics_enhancement.js:709 地面 tile
-      const g = await ctx.call(probes.probeGroundUV, DESIGN_TILE);
+      // 不再传死数：tile 现在随贴图边长归一化（512²→5.5m，256²→2.75m）。
+      // 传 5.5 会让「砾石/沥青换了 256² 贴图」被读成「UV 平铺错了」——
+      // 那次误判真的发生过（54.55 vs 109.09），责任人是我。
+      const g = await ctx.call(probes.probeGroundUV, 5.5);
       await ctx.shot('REG-02_地面');
 
       if (!g.found) {
         return [row('找到地面网格 mapEnvironmentGroup.children[0]', true, false, 'FAIL')];
       }
-      const dev = Math.abs(g.spanX - g.expectedSpan);
+      const pbr = g.pbr || {};
+      const designTile = pbr.tileU || 0;
+      const expectedSpan = designTile > 0 ? +(g.mapSize / designTile).toFixed(2) : g.expectedSpan;
+      const dev = Math.abs(g.spanX - expectedSpan);
       const uvStatus = g.spanX < 5 ? 'FAIL' : dev <= 2 ? 'PASS' : dev <= 5 ? 'CONCERNS' : 'FAIL';
-      const tileStatus = Math.abs(g.effectiveTile - DESIGN_TILE) <= 0.5 ? 'PASS' : 'CONCERNS';
+      // 真正该守的不变式：texel 密度。三种地面（草地 512² / 砾石 256² / 沥青 256²）
+      // 必须落在同一档，否则换图就会看到颗粒突然放大一倍。
+      const cm = pbr.cmPerTexel || 0;
+      const densityStatus = cm >= 1.0 && cm <= 1.3 ? 'PASS' : cm > 0 ? 'FAIL' : 'CONCERNS';
 
       return [
         eq('地面几何体类型', 'PlaneGeometry', g.geoType),
-        // 期望 = MAP_DATA.mapSize / 5.5（mapSize 从 MAP_DATA 读，不写死 110）
         row(
-          `UV 跨度 === mapSize/tile（${g.mapSize}/${DESIGN_TILE}=${g.expectedSpan}）±2`,
-          `${g.expectedSpan}±2`,
+          `UV 跨度 === mapSize/tile（${g.mapSize}/${designTile || '?'}=${expectedSpan}）±2`,
+          `${expectedSpan}±2`,
           g.spanX,
           uvStatus,
         ),
-        row(`等效平铺尺寸 ≈${DESIGN_TILE}m`, `≈${DESIGN_TILE}`, g.effectiveTile, tileStatus),
+        row(`地面贴图种类 = ${g.groundKind}（贴图 ${g.texSize}²）`, g.groundKind, pbr.kind || '(未写回)', pbr.kind === g.groundKind ? 'PASS' : 'FAIL'),
+        row('texel 密度 ∈ [1.0, 1.3] cm/texel（三图一致）', '1.0–1.3', cm ? cm.toFixed(2) : '(未写回)', densityStatus),
         isTrue('UV 已按 PBR 世界尺寸处理（_pbrUV 已锁）', g.locked),
         isTrue('地面材质挂有贴图', g.hasMap),
         ge('_pbrUV 几何体数', 1, g.pbrLockedCount),
@@ -593,35 +601,57 @@ export const cases = [
     auto: '半自动',
     async run(ctx) {
       const probes = await import('./probes.mjs');
+      const INTERVAL = 100;
+
+      // 采样器
+      async function sample(ms) {
+        const out = [];
+        const t0 = Date.now();
+        while (Date.now() - t0 < ms) {
+          const f = await ctx.call(probes.probeFrame);
+          if (f.frame) out.push({ ...f.frame, at: Date.now() - t0 });
+          await ctx.wait(INTERVAL);
+        }
+        return out;
+      }
+
+      // ---- 1) 先在同一次会话里量一条空场基线 ----
+      //
+      // 以前这里用的是 ctx.state.idleJs * 3，而 idleJs 从来没被赋值过 ——
+      // 也就是说预算恒等于硬编码的 12ms。单独跑本用例时 p50 约 6-9ms 能过，
+      // 放在全套里跑（前面 9 个用例已经把敌人、粒子、掉落物堆起来）就稳定 15ms 左右 → 假 FAIL。
+      // 绝对毫秒数在 headless SwiftShader 下跨运行差 5-10 倍（tests/strategy.md §8.0），
+      // 唯一有意义的比法是「同一时刻、同一场景，交战 vs 空场」。
+      await ctx.call(probes.parkEnemiesAway);
+      await ctx.wait(1200);
+      const idleSamples = await sample(2500);
+      const idleSum = summarize(idleSamples);
+      const idleJs = idleSum.jsP50 || 0;
+
+      // ---- 2) 同一场景下把敌人拉到近处，再采交战态 ----
       const moved = await ctx.call(probes.moveEnemiesNear);
       await ctx.wait(1500);
-
-      const INTERVAL = 100;
       const WINDOW = 6000;
-      const samples = [];
-      const t0 = Date.now();
-      while (Date.now() - t0 < WINDOW) {
-        const f = await ctx.call(probes.probeFrame);
-        if (f.frame) samples.push({ ...f.frame, at: Date.now() - t0 });
-        await ctx.wait(INTERVAL);
-      }
-      const warm = samples.filter((s) => s.at >= 1500);
-      const use = warm.length >= 10 ? warm : samples;
+      const raw = await sample(WINDOW);
+      const warm = raw.filter((s) => s.at >= 1500);
+      const use = warm.length >= 10 ? warm : raw;
       const expected = Math.floor((WINDOW - 1500) / INTERVAL);
       const starved = use.length < Math.max(12, expected * 0.4);
 
       const sum = summarize(use);
-      const idle = ctx.state.idleJs || 0;
-      // 预算口径：交火确实会涨（实测 3 敌人贴近时 p50 3.7 → 8.8ms，+5.1ms 属正常 AI 开销）。
-      // 「退化」的判据是量级变化（事故③ 是 399ms/帧），不是 2 倍。故用 max(12, 空场×3)。
-      const budget = Math.max(12, +(idle * 3).toFixed(2));
+      // 预算口径：交火确实会涨（3 个敌人贴近时 +5ms 属正常 AI 开销）。
+      // 判「退化」看的是量级变化（事故③ 是 399ms/帧），所以给空场基线的 2.5 倍，
+      // 下限 10ms 保证空场基线异常低时不会把预算压到不可能达到。
+      const budget = Math.max(10, +(idleJs * 2.5).toFixed(1));
       const pick = (normal, whenStarved) => (starved ? whenStarved : normal);
 
       return [
         row('挪动敌人到位（交战压力）', '≥1', moved.moved, moved.moved >= 1 ? 'PASS' : 'CONCERNS'),
+        row('同场景空场 JS p50（本次基线）', '采样≥10', idleJs, idleSamples.length >= 10 ? 'PASS' : 'CONCERNS'),
         row('采样是否被环境拖垮', false, starved, starved ? 'CONCERNS' : 'PASS'),
-        row('交战态 JS p50', `≤${budget}`, sum.jsP50, pick(sum.jsP50 <= budget ? 'PASS' : 'FAIL', 'CONCERNS')),
-        row('交战态 JS p90', '≤16', sum.jsP90, pick(sum.jsP90 <= 16 ? 'PASS' : 'CONCERNS', 'CONCERNS')),
+        row('交战态 JS p50（相对空场 ×2.5）', `≤${budget}`, sum.jsP50, pick(sum.jsP50 <= budget ? 'PASS' : 'FAIL', 'CONCERNS')),
+        // p90 只做记录：单帧尖峰在 SwiftShader 下与真实设备无关，不足以判退化
+        row('交战态 JS p90（仅记录）', '≤16', sum.jsP90, sum.jsP90 <= 16 ? 'PASS' : 'CONCERNS'),
         // 事故③ 的特征是「每帧 JS 数百毫秒」；单次长帧要能归因到 js 才判退化
         row('交战态 JS 最大（事故③ 为 399ms）', '≤100', sum.max.js, pick(sum.max.js <= 100 ? 'PASS' : 'FAIL', 'CONCERNS')),
         row('长帧归因', 'js 不得独占', `js=${sum.max.js} render=${sum.max.render}`, pick(sum.max.js > 100 && sum.max.render <= sum.max.js ? 'FAIL' : 'PASS', 'CONCERNS')),
@@ -725,21 +755,19 @@ export const cases = [
     },
   },
 
-  /* ================= SMK-14 低画质降级验收（美术底线） ================= */
+  /* ================= SMK-14 低画质降级验收（美术底线）+ IBL 基线 ================= */
   {
     id: 'SMK-14',
-    title: '低画质降级不得拆掉材质（美术底线）',
+    title: '低画质降级不得拆掉材质（美术底线）+ IBL 基线',
     auto: '半自动（数值断言 + 人工目检截图）',
     async run(ctx) {
       const probes = await import('./probes.mjs');
       /**
-       * 必须在「未降级的干净页面」上测：
-       *   主场景到这一步时 PerformanceGuard 早已自动降到 level 4，
-       *   此时 forceLevel(3) 会因 `if (n <= _level) return` 直接变成空操作 —— 首版就是这么假通过的。
-       * 所以开 ?perf=off 关掉自动降级，再手动 forceLevel(3)，验证的才是真·降级路径。
+       * 必须在「未降级的干净页面」上测（铁律④）：主场景到这一步早已自动降到 level 4，
+       * 此时 forceLevel(3) 会因 `if (n <= _level) return` 变成空操作 —— 首版就这么假通过过。
+       * 顺带：?perf=off 保持 level 0 → IBL 生效，这是采「道具 envMapIntensity 差异」的唯一窗口。
        *
-       * art-director 的验收项：albedo 永不砍 / normalMap 永不置 null（只折半 normalScale）/
-       * 降级不得让 program 数与 draw call 增加（防全场景重编译）。
+       * 裁定（2026-11-13）：禁止降级时置空 normalMap。违反即 FAIL。
        */
       const p2 = await ctx.newGamePage('?perf=off');
       try {
@@ -748,12 +776,55 @@ export const cases = [
           startGame();
         });
         await p2.waitForFunction(() => typeof S !== 'undefined' && S.phase === 'playing', { timeout: 30000 });
-        await ctx.wait(3500); // 等 upgradeEnvironmentMaterials 完成
 
-        const sampleCalls = async (pg) => {
+        // 条件等待材质升级完成（死等 4s 时只升级一部分，基数会漂 2 vs 424）
+        try {
+          await p2.waitForFunction(
+            () => {
+              let n = 0;
+              const seen = new Set();
+              scene.traverse((o) => {
+                if (!o.isMesh || !o.material) return;
+                for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+                  if (m && !seen.has(m.uuid)) {
+                    seen.add(m.uuid);
+                    if (m.normalMap) n++;
+                  }
+                }
+              });
+              return n >= 200;
+            },
+            { timeout: 15000 },
+          );
+        } catch (e) {}
+        await ctx.wait(500);
+
+        const before = await p2.evaluate(probes.probeMaterialState);
+        const envIBL = await p2.evaluate(probes.probeEnvIntensity);
+
+        // IBL-on 道具近景（修复前基线）：玩家摆到最近容器旁 2.5m 并正对它
+        const aim = await p2.evaluate(() => {
+          try {
+            const t = (typeof containers !== 'undefined' && containers[0] && containers[0].mesh && containers[0].mesh.position) || null;
+            if (!t) return { ok: false };
+            const px = t.x + 2.5, pz = t.z;
+            playerGroup.position.set(px, 0, pz);
+            mouseX = Math.atan2(-(t.x - px), -(t.z - pz));
+            mouseY = 0.12;
+            playerGroup.rotation.y = mouseX;
+            camera.rotation.x = mouseY;
+            return { ok: true, target: [+t.x.toFixed(1), +t.z.toFixed(1)] };
+          } catch (e) {
+            return { ok: false, error: String(e && e.message) };
+          }
+        });
+        await ctx.wait(700);
+        await p2.screenshot({ path: `${ctx.evidenceDir}/SMK-14_IBL道具近景_修复前.png` }).catch(() => {});
+
+        const sampleCalls = async () => {
           const vals = [];
           for (let i = 0; i < 5; i++) {
-            const v = await pg.evaluate(() => {
+            const v = await p2.evaluate(() => {
               try {
                 return renderer.info.render.calls;
               } catch (e) {
@@ -765,24 +836,21 @@ export const cases = [
           }
           return vals.length ? Math.max(...vals) : -1;
         };
+        const beforeCalls = await sampleCalls();
 
-        const before = await p2.evaluate(probes.probeMaterialState);
-        const beforeCalls = await sampleCalls(p2);
         const forced = await p2.evaluate(probes.forceDegrade, 3);
         await ctx.wait(1500);
         const after = await p2.evaluate(probes.probeMaterialState);
-        const afterCalls = await sampleCalls(p2);
         await p2.screenshot({ path: `${ctx.evidenceDir}/SMK-14_level3_降级后.png` }).catch(() => {});
+        const afterCalls = await sampleCalls();
 
         const newlyNulledMaps = Math.max(0, after.mapNulled - before.mapNulled);
         const lostNormals = Math.max(0, before.withNormal - after.withNormal);
         /**
-         * 2026-11-13 主理人裁定：**禁止在降级时置空 normalMap**。三条理由：
-         *   1. 它把「降级」变成「重编译风暴」，且发生在设备已扛不住的瞬间（实测 program 20→39，+95%）；
-         *   2. 不可逆：材质对象被就地改写，setLowMode(false) 没有恢复分支，降级后画面永久变平；
-         *   3. 收益接近零：normalMap 主要吃纹理带宽而非主要开销，却抹掉了这套程序化 PBR 唯一的美术辨识度。
-         * 故 designPending = false → 违反即 FAIL。修法在 performance_guard.js:91（改 normalScale 折半），
-         * 测试不等代码：红着才有人去改。
+         * 2026-11-13 主理人裁定：禁止降级时置空 normalMap。
+         *   1. 把「降级」变成「重编译风暴」，且发生在设备已扛不住的瞬间（实测 program 20→26/41）；
+         *   2. 不可逆：材质就地改写，setLowMode(false) 无恢复分支；
+         *   3. 收益接近零：normalMap 吃纹理带宽而非主要开销，却抹掉美术定位三关键词之一的「骨料质感」。
          */
         const designPending = false;
         const normalStatus = lostNormals === 0 ? 'PASS' : designPending ? 'CONCERNS' : 'FAIL';
@@ -804,10 +872,18 @@ export const cases = [
             after.programs,
             after.programs <= before.programs ? 'PASS' : 'CONCERNS',
           ),
+          row('IBL 生效（scene.environment 非空）', true, envIBL.envorinmentOn, envIBL.envorinmentOn ? 'PASS' : 'CONCERNS'),
           row(
-            'draw call（仅记录，不判定）',
-            '由 SMK-11 专管',
-            `${beforeCalls}→${afterCalls}（后期开启时该读数只反映最后一个 pass，不可比）`,
+            'envMapIntensity 分布（art 口径：非水面/玻璃/金属 ∈ [0.1,0.4]）',
+            '越界 0',
+            `total ${envIBL.total} / 越界 ${envIBL.outOfRange} / 分布 ${JSON.stringify(envIBL.byValue)}`,
+            envIBL.outOfRange === 0 ? 'PASS' : 'CONCERNS',
+          ),
+          row('越界样本（默认 1.0 = 「没配」的典型特征）', '[]', JSON.stringify(envIBL.samples), 'PASS'),
+          row(
+            '道具近景截图（IBL-on，修复前基线）',
+            '见 evidence',
+            `SMK-14_IBL道具近景_修复前.png（${aim.ok ? 'aimed' : 'no target'}）`,
             'PASS',
           ),
         ];
@@ -871,6 +947,132 @@ export const cases = [
         ),
         row('__qa.swallowed 样本', '[]', swallowed.sample, 'PASS'),
       ];
+    },
+  },
+  /* ================= FILE-01 file:// 双击直开：产品承诺（designPending） ================= */
+  {
+    id: 'FILE-01',
+    title: 'file:// 双击直开：敌人模型必须加载（产品承诺）',
+    auto: '全自动（独立页面，不并入 SMK-12 汇总）',
+    async run(ctx) {
+      /**
+       * 用户已拍板：内联模型，保住「双击即玩」（修法见 tools/inline-models.mjs → models_embedded.js，
+       * 仅 file:// 下动态注入，走 loader.parse() 而非 data URI）。
+       *
+       * 判据按**修法**定，不按现状定（这是本条用例的意义：测产品承诺，不是测实现）：
+       *   - location.protocol === 'file:' 时 enemyModels 键数 === 3
+       *   - 所有敌人 userData.placeholder === false
+       *   - __initErrors === 0（内联成功但仍报错 → 解码路径有问题，也该红）
+       *
+       * designPending = true：修法落地前红但不阻塞（映射为 CONCERNS）；落地当天置 false 转 FAIL 门控。
+       */
+      const designPending = true;
+
+      const page = await ctx.page.context().newPage();
+      const logs = [];
+      page.on('console', (m) => {
+        if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`);
+      });
+      page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
+      page.on('requestfailed', (r) => {
+        const f = r.failure();
+        logs.push(`[requestfailed] ${r.url().split('/').pop()} :: ${f ? f.errorText : '?'}`);
+      });
+      page.on('dialog', (d) => d.dismiss().catch(() => {}));
+
+      try {
+        await page.goto(ctx.fileUrl, { waitUntil: 'load', timeout: 90000 });
+        await page.waitForFunction(
+          () => typeof RenderPipeline !== 'undefined' && typeof startGame === 'function' && typeof S !== 'undefined',
+          { timeout: 90000 },
+        );
+        await page.waitForFunction(
+          () => {
+            const el = document.getElementById('loadingScreen');
+            return el && el.style.display === 'none';
+          },
+          { timeout: 60000 },
+        );
+
+        await page.evaluate(() => {
+          enterLobby('qa_fileproto');
+          startGame();
+        });
+        await page.waitForFunction(() => typeof S !== 'undefined' && S.phase === 'playing', { timeout: 30000 });
+
+        // 内联方案走 loader.parse()，可能是同步或短异步：最多等 8s
+        let modelsReady = true;
+        try {
+          await page.waitForFunction(
+            () => typeof enemyModels === 'object' && enemyModels && Object.keys(enemyModels).length >= 3,
+            { timeout: 8000 },
+          );
+        } catch (e) {
+          modelsReady = false;
+        }
+
+        const r = await page.evaluate(() => {
+          let placeholders = 0;
+          let total = 0;
+          for (const e of typeof enemies !== 'undefined' ? enemies : []) {
+            if (!e || !e.mesh) continue;
+            total++;
+            if (e.mesh.userData && e.mesh.userData.placeholder) placeholders++;
+          }
+          return {
+            protocol: location.protocol,
+            modelKeys: Object.keys(typeof enemyModels === 'object' && enemyModels ? enemyModels : {}).length,
+            modelNames: Object.keys(typeof enemyModels === 'object' && enemyModels ? enemyModels : {}),
+            enemies: total,
+            placeholders,
+            initErrors: (window.__initErrors || []).length,
+            initErrorSample: (window.__initErrors || []).slice(0, 3).map((e) => String(e && (e.where || e.message)).slice(0, 100)),
+          };
+        });
+
+        // 敌人近景（产品承诺的直观证据）
+        await page.evaluate(() => {
+          try {
+            const e = enemies[0];
+            if (!e || !e.mesh) return;
+            const t = e.mesh.position;
+            const px = t.x + 5, pz = t.z;
+            playerGroup.position.set(px, 0, pz);
+            mouseX = Math.atan2(-(t.x - px), -(t.z - pz));
+            mouseY = 0.05;
+            playerGroup.rotation.y = mouseX;
+            camera.rotation.x = mouseY;
+          } catch (err) {}
+        });
+        await ctx.wait(800);
+        await page.screenshot({ path: `${ctx.evidenceDir}/FILE-01_file协议敌人近景.png` }).catch(() => {});
+
+        const mark = (pass) => (pass ? 'PASS' : designPending ? 'CONCERNS' : 'FAIL');
+        const corsCount = logs.filter((l) => /CORS|XMLHttpRequest|ERR_FAILED/i.test(l)).length;
+
+        return [
+          row('页面协议', 'file:', r.protocol, r.protocol === 'file:' ? 'PASS' : 'FAIL'),
+          row('enemyModels 键数（修法要求 3）', 3, r.modelKeys, mark(modelsReady && r.modelKeys === 3)),
+          row('敌人占位体数（修法要求 0）', 0, r.placeholders, mark(r.placeholders === 0)),
+          row('__initErrors（修法要求 0）', 0, r.initErrors, mark(r.initErrors === 0)),
+          row('模型名', '3 个', JSON.stringify(r.modelNames), 'PASS'),
+          row('CORS/加载失败日志条数（记录）', '0（内联后应为 0）', corsCount, 'PASS'),
+          row('initErrors 样本', '[]', JSON.stringify(r.initErrorSample), 'PASS'),
+          row('敌人截图（产品承诺的直观证据）', '见 evidence', 'FILE-01_file协议敌人近景.png', 'PASS'),
+          row(
+            '缺陷状态',
+            '修法落地后转 FAIL 门控',
+            modelsReady && r.placeholders === 0 && r.initErrors === 0
+              ? '已满足承诺'
+              : designPending
+                ? '已知未满足（designPending：内联模型修法中）'
+                : '回归',
+            'PASS',
+          ),
+        ];
+      } finally {
+        await page.close().catch(() => {});
+      }
     },
   },
 ];

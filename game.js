@@ -183,6 +183,19 @@ const RARITY = {
     ultimate:  { name: '终极',  color: '#f44336', bg: '#321a1a', border: '#8a3a3a' },
 };
 
+// ========== 经济标定（FIX-07）==========
+// 全项目唯一真源。改价格只能改这里，不要回去动 ITEMS / SHOP_PRICES 的字面量。
+//
+// 为什么要拆开：原实现里 ITEMS[].value 与 SHOP_PRICES[].buy 被强制相等（实测 139 件
+// 基础物品 buy/value = 1.00），于是「这件战利品值多少钱」和「在商店买它要多少钱」
+// 是同一个数，无法独立调节 —— 想让战利品贬值就必须让商店跟着打折，反之亦然。
+// 现在 value 表示战利品估值，buy 表示零售价，两者各自独立缩放。
+const ECON = {
+    PRICE_SCALE: 0.625,   // 零售价 = 原标价 × 0.625（T3 从 ₵6.4M → ₵4.0M）
+    LOOT_SCALE: 0.27,     // 战利品估值 = 原 value × 0.27（单局带出 ₵3.29M → ₵0.89M）
+    SELL_RATE: 0.85,      // 卖出回收率（不变）
+};
+
 const CONFIG = {
     mapSize: 110,
     gameTime: { normal: 900, hard: 600 },
@@ -194,7 +207,9 @@ const CONFIG = {
     sprintMultiplier: 1.65,
     crouchSpeedMultiplier: 0.45,
     mouseSensitivity: 0.002,
-    hardModeFee: 200000,
+    // 高危入场费 ≈ T2 配装成本的 13%。原来是 20 万，相当于单局收益的 3-10%，
+    // 玩家根本不会犹豫要不要进高危 —— 那就不是风险，是背景音。
+    hardModeFee: 60000,
     FIXED_DT: 1 / 60,
     MAX_FRAME_DT: 0.1,
     // Stamina
@@ -621,12 +636,72 @@ const CONTAINER_TYPES = {
         items:['pistolAmmo','pistolAmmo','pistolAmmo','rifleAmmo','rifleAmmo','rifleAmmo','shotgunAmmo','shotgunAmmo','bolt','tape'],
         min:3, max:6, searchTime:0.8 },
     safe:       { name: '保险箱', icon: '🔐', color: 0x4a4a3a, shape: 'safe',   w:7, h:5,
-        items:['cash','cash','cash','cash','gold','gold','gold','watch','watch','phone','phone','whiskey','whiskey','circuit','circuit','gpu','gpu','ivory','ivory','diamond','relic','red_ring','red_watch','red_necklace','red_tiger','red_vase','africa_star','redKeycard'],
+        // FIX-05：africa_star 已移出常规池，改为独立头奖掷骰（见 JACKPOT_TABLE）
+        items:['cash','cash','cash','cash','gold','gold','gold','watch','watch','phone','phone','whiskey','whiskey','circuit','circuit','gpu','gpu','ivory','ivory','diamond','relic','red_ring','red_watch','red_necklace','red_tiger','red_vase','redKeycard'],
         min:1, max:3, searchTime:2.5 },
     premiumBox: { name: '高级物资箱', icon: '✨', color: 0xffd700, shape: 'premium', w:8, h:6,
-        items:['gold','gold','gold','gpu','gpu','gpu','laptop','laptop','laptop','ivory','ivory','ivory','circuit','circuit','circuit','perfume','perfume','perfume','whiskey','whiskey','diamond','relic','tier4_armor','tier4_helmet','tier5_armor','red_ring','red_necklace','red_tiger','red_vase','red_lion','red_crown','red_painting','red_statue','red_scepter','africa_star','rifle_w','goldKeycard'],
+        // FIX-05：africa_star 已移出常规池，改为独立头奖掷骰（见 JACKPOT_TABLE）
+        items:['gold','gold','gold','gpu','gpu','gpu','laptop','laptop','laptop','ivory','ivory','ivory','circuit','circuit','circuit','perfume','perfume','perfume','whiskey','whiskey','diamond','relic','tier4_armor','tier4_helmet','tier5_armor','red_ring','red_necklace','red_tiger','red_vase','red_lion','red_crown','red_painting','red_statue','red_scepter','rifle_w','goldKeycard'],
         min:1, max:3, searchTime:3.0 },
 };
+
+// ========== 头奖与红藏品独立掷骰（FIX-05 / FIX-06）==========
+//
+// 以前这两类稀有物是「塞进容器 items 数组」实现的，效果等于给池子加水：
+// 阵列越长，单件出现概率越低，但它们占的期望价值份额却始终存在。
+// 更糟的是红藏品被 93 件全量 concat 进 safe，池子从 28 项膨胀到 140 项，
+// 开一箱至少出 1 件红的概率高达 88.7% —— 这不是「稀有」，这是「保底」。
+//
+// 现在改成独立掷骰：先按常规池抽物品，再各自掷一次是否出货。每箱最多 1 件。
+
+// 非洲之星：safe 每箱 0.2%，premiumBox 0.4%，空投 2%
+const JACKPOT_ID = 'africa_star';
+const JACKPOT_TABLE = { safe: 0.002, premiumBox: 0.004, airdrop: 0.02 };
+
+// 红藏品：按价值分三档，各自独立加权
+// 档位口径按 RED_COLLECTIBLES_CONFIG[].value，不新增字段
+const RED_TIER_BOUNDS = [1000000, 5000000];   // <1e6 入门 / 1e6-5e6 中档 / >=5e6 顶级
+const RED_ROLL = {
+    safe:       { p: 0.08, w: [0.78, 0.19, 0.03] },
+    premiumBox: { p: 0.15, w: [0.72, 0.24, 0.04] },
+};
+// premiumBox 字面量里手写的九件红藏品保留在基础池内（那是它的定位），
+// 掷骰池要排除它们，否则同一件东西会被计入两次，红色产出直接翻倍。
+const RED_HANDWRITTEN_IN_PREMIUM = [
+    'red_ring', 'red_necklace', 'red_tiger', 'red_vase', 'red_lion',
+    'red_crown', 'red_painting', 'red_statue', 'red_scepter',
+];
+// 三档掷骰池，在收藏品合并阶段填充（此时才知道每件的 value）
+const RED_ROLL_POOL = [[], [], []];
+
+/**
+ * 独立掷骰：头奖 + 红藏品。
+ *
+ * 直接写进 containerGrid，而不是返回一个数组让调用方再拼 ——
+ * 因为 createContainer 后面就是从 containerGrid 反推出 items 列表的，
+ * 写进格子等于自动被算进去；另起一条返回通道迟早会漏掉其中一条。
+ *
+ * 格子满了就放弃这次出货（findFreeSlot 返回 null）。这是有意的：
+ * 强行塞进去会破坏格子布局，而少一件头奖只是概率上少一点，不会出错。
+ */
+function _rollContainerRare(def, containerGrid, type) {
+    const gw = def.w || 5, gh = def.h || 3;
+    if (JACKPOT_TABLE[type] && Math.random() < JACKPOT_TABLE[type]) {
+        const s = findFreeSlot(containerGrid, gw, gh, JACKPOT_ID);
+        if (s) placeInGrid(containerGrid, gw, JACKPOT_ID, s.col, s.row);
+    }
+    const rr = RED_ROLL[type];
+    if (rr && Math.random() < rr.p) {
+        const r = Math.random();
+        const t = r < rr.w[0] ? 0 : (r < rr.w[0] + rr.w[1] ? 1 : 2);
+        const pool = RED_ROLL_POOL[t];
+        if (pool.length) {
+            const id = pool[Math.floor(Math.random() * pool.length)];
+            const s = findFreeSlot(containerGrid, gw, gh, id);
+            if (s) placeInGrid(containerGrid, gw, id, s.col, s.row);
+        }
+    }
+}
 
 // Sell = 85% of buy price
 const SHOP_PRICES = {
@@ -777,10 +852,19 @@ if (typeof RED_COLLECTIBLES_CONFIG !== 'undefined') {
             sell: Math.floor(rcCfg.value * 0.85)
         };
     }
-    // Distribute ALL red collectibles to safe and premiumBox loot pools
-    var _rcIds = Object.keys(RED_COLLECTIBLES_CONFIG);
-    CONTAINER_TYPES.safe.items = CONTAINER_TYPES.safe.items.concat(_rcIds);
-    CONTAINER_TYPES.premiumBox.items = CONTAINER_TYPES.premiumBox.items.concat(_rcIds);
+    // FIX-06：以前这里把 93 件红藏品全量 concat 进 safe / premiumBox 的 items 数组，
+    // 等于把「稀有」做成了「保底」。现在改为独立掷骰，这里只负责建掷骰池。
+    // 池子按价值分三档；premiumBox 字面量里手写的那九件排除在外，避免重复计入。
+    var _handwritten = {};
+    for (var _hi = 0; _hi < RED_HANDWRITTEN_IN_PREMIUM.length; _hi++) {
+        _handwritten[RED_HANDWRITTEN_IN_PREMIUM[_hi]] = true;
+    }
+    for (var rcPoolId in RED_COLLECTIBLES_CONFIG) {
+        if (_handwritten[rcPoolId]) continue;
+        var _v = RED_COLLECTIBLES_CONFIG[rcPoolId].value || 0;
+        var _t = _v < RED_TIER_BOUNDS[0] ? 0 : (_v < RED_TIER_BOUNDS[1] ? 1 : 2);
+        RED_ROLL_POOL[_t].push(rcPoolId);
+    }
 }
 
 // Merge white/blue/purple/gold collectibles into ITEMS, SHOP_PRICES (balanced)
@@ -833,6 +917,28 @@ if (typeof COLLECTIBLES_CONFIG !== 'undefined') {
     CONTAINER_TYPES.premiumBox.items = CONTAINER_TYPES.premiumBox.items.concat(
         _gcIds.filter(function(_, i) { return i % 3 === 0; })
     );
+}
+
+// ========== FIX-07：经济重定标（一次性遍历，不逐条改字面量）==========
+//
+// 必须在所有收藏品合并完之后执行，否则后合并进来的条目会漏掉缩放，
+// 而漏掉的那些恰好是最贵的红藏品 —— 这种错误在数值上表现为「怎么调都还差一点」。
+//
+// 顺序要点：buy / sell 都从**原始的 ITEMS[].value** 派生，所以必须先算价格、再缩放 value。
+// 反过来做的话，buy 会变成「已缩放的 value × 0.625」，等于把系数平方，价格会低到离谱。
+for (var _pid in SHOP_PRICES) {
+    var _origPrice = (ITEMS[_pid] && typeof ITEMS[_pid].value === 'number')
+        ? ITEMS[_pid].value
+        : SHOP_PRICES[_pid].buy;
+    SHOP_PRICES[_pid].buy = Math.round(_origPrice * ECON.PRICE_SCALE / 100) * 100;
+    // sell 由 value 派生而不是由 buy 派生：否则「战利品估值」和「零售价」又被绑回一起，
+    // 0.625 × 0.85 = 0.53 意味着卖价接近半价，拆箱即套利。
+    SHOP_PRICES[_pid].sell = Math.round(_origPrice * ECON.LOOT_SCALE * ECON.SELL_RATE / 100) * 100;
+}
+for (var _iid2 in ITEMS) {
+    if (ITEMS[_iid2] && typeof ITEMS[_iid2].value === 'number') {
+        ITEMS[_iid2].value = Math.round(ITEMS[_iid2].value * ECON.LOOT_SCALE);
+    }
 }
 
 // 为每个物品记录 id：3D 图标 / 检视器按 id 取模型
@@ -1738,7 +1844,9 @@ function defaultPersistent() {
     placeInGrid(g, CONFIG.STASH_COLS, 'bandage', 7, 0);
     placeInGrid(g, CONFIG.STASH_COLS, 'painkiller', 8, 0);
     return {
-        money: 1000000,
+        // 起始资金 ≈ T1 配装成本（₵206,200）。取 20 万是为了让首局就「差一点买不起 T2」，
+        // 而不是一上来就能直接进中档。原来给 100 万，等于把前 10 局的装备成长整个跳过了。
+        money: 200000,
         stashGrid: g,
         mailItems: [], // Unlimited overflow storage
         stats: { kills: 0, extracts: 0, totalValue: 0, games: 0 },
@@ -1857,6 +1965,54 @@ let airDrops = []; // Airdrop supply events
 let airdropTimer = 0; // Countdown to next airdrop
 let particles = [];
 let containers = [];
+// 容器统一挂在这个分组下，而不是直接挂 scene。
+// 目的只有一个：能让它们被 WorldPolish.batchStatic 当成一个独立批次处理，
+// 而不与地图环境混在一起（环境已经是合批过的，再合一次没有收益，反而多一轮遍历）。
+let containerGroup = null;
+// 容器的地表价值光圈（透明）不参与合批，单独攒成 InstancedMesh。
+// 结构：{ key: 'color|opacity', color, opacity, items: [{x,z}] }
+let _containerGlow = [];
+
+/**
+ * 容器材质缓存。
+ *
+ * 为什么必须做：原实现里每个子网格都 new 一个 MeshStandardMaterial，
+ * 170 个容器 × 5.36 个子网格 = 912 个材质实例、912 次 draw call，
+ * 占整帧 1077 次 draw call 的 85%。合批的前提是「材质可共用」，
+ * 材质不共用时 batchStatic 一组都凑不出来。
+ *
+ * 缓存键必须包含所有会进 shader 的参数。漏一个（比如当初漏了 envMapIntensity）
+ * 的后果是两种本该不同的材质被当成同一种共用 —— 这个错误不会报错，只会悄悄画错。
+ */
+const _containerMatCache = {};
+function _cMat(color, opt) {
+    opt = opt || {};
+    const rough = opt.roughness == null ? 0.7 : opt.roughness;
+    const metal = opt.metalness || 0;
+    const emis = opt.emissive || 0;
+    const emisI = opt.emissiveIntensity || 0;
+    const envI = opt.envMapIntensity == null ? 0.18 : opt.envMapIntensity;
+    const key = 'S|' + color + '|' + rough + '|' + metal + '|' + emis + '|' + emisI + '|' + envI;
+    let m = _containerMatCache[key];
+    if (m) return m;
+    m = new THREE.MeshStandardMaterial({
+        color: color, roughness: rough, metalness: metal,
+        emissive: emis, emissiveIntensity: emisI, envMapIntensity: envI,
+    });
+    _containerMatCache[key] = m;
+    return m;
+}
+function _cBasic(color, opt) {
+    opt = opt || {};
+    const key = 'B|' + color + '|' + (opt.opacity == null ? 1 : opt.opacity) + '|' + (opt.side || 0);
+    let m = _containerMatCache[key];
+    if (m) return m;
+    m = new THREE.MeshBasicMaterial({ color: color, opacity: opt.opacity == null ? 1 : opt.opacity });
+    if (opt.opacity != null) m.transparent = true;
+    if (opt.side) m.side = opt.side;
+    _containerMatCache[key] = m;
+    return m;
+}
 let obstacles = [];
 let extractPoints = [];
 let bulletTrails = [];
@@ -1903,14 +2059,134 @@ function isActionPressed(action) {
 
 let enemyModels = {};
 let enemyAnimations = {};
+const ENEMY_MODEL_FILES = {
+    Soldier: 'models/Soldier.glb',
+    Xbot: 'models/Xbot.glb',
+    RobotExpressive: 'models/RobotExpressive.glb',
+};
+const _modelFailures = [];
+
+/** base64 → ArrayBuffer。给 loader.parse 用，避免 data URI 的二次 URL 解析。 */
+function _b64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const n = bin.length;
+    const bytes = new Uint8Array(n);
+    for (let i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+}
+
+/**
+ * 仅在 file:// 下动态注入 models_embedded.js。
+ *
+ * 为什么用动态 <script> 而不是在 index.html 里静态引入：
+ * 该文件有 7MB，http 部署时完全不需要它 —— 静态引入会让每个在线玩家白下载 7MB。
+ * 动态注入同时验证了一件事：脚本标签在 file:// 下是放行的（受限制的只有 XHR/fetch），
+ * 这也是本方案能成立的前提。
+ */
+function _loadEmbeddedModels(cb) {
+    if (window.EMBEDDED_MODELS) { cb(window.EMBEDDED_MODELS); return; }
+    const s = document.createElement('script');
+    s.id = 'modelsEmbeddedScript';
+    s.src = 'models_embedded.js';
+    s.onload = function () {
+        cb(window.EMBEDDED_MODELS || null);
+    };
+    s.onerror = function () {
+        reportInitError('loadEnemyModels:embedded', new Error('models_embedded.js 注入失败（文件是否随包分发？）'));
+        cb(null);
+    };
+    document.head.appendChild(s);
+}
+
+/**
+ * 模型全部失败时给一条玩家能看懂的提示。
+ *
+ * 之前这条路径是完全静默的：file:// 下三个模型全部 CORS 失败，敌人变成圆柱，
+ * 玩家只会觉得「这游戏做得很糙」，而不会想到是协议限制。
+ * 提示必须可关闭 —— 它只是解释，不是阻断。
+ */
+function _showModelFallbackNotice() {
+    if (document.getElementById('modelFallbackNotice')) return;
+    const d = document.createElement('div');
+    d.id = 'modelFallbackNotice';
+    d.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;' +
+        'max-width:min(620px,92vw);padding:10px 34px 10px 14px;border-radius:8px;' +
+        'background:rgba(28,28,32,.94);color:#e8e8ea;font:13px/1.55 system-ui,-apple-system,"Microsoft YaHei",sans-serif;' +
+        'box-shadow:0 6px 22px rgba(0,0,0,.45);border:1px solid rgba(255,180,80,.5);';
+    d.innerHTML = '<b style="color:#ffb450">敌人模型未加载，当前为占位体</b><br>' +
+        '直接双击打开时浏览器会拦截本地模型读取。' +
+        '把游戏放到本地服务器（或从项目根运行一个静态服务）后即可正常显示。' +
+        '玩法不受影响。';
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.style.cssText = 'position:absolute;right:6px;top:4px;background:none;border:0;color:#aaa;font-size:18px;cursor:pointer;line-height:1;padding:4px 6px;';
+    x.onclick = function () { d.remove(); };
+    d.appendChild(x);
+    document.body.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.remove(); }, 12000);
+}
+
 function loadEnemyModels() {
     const loader = new THREE.GLTFLoader();
-    const files = { Soldier: 'models/Soldier.glb', Xbot: 'models/Xbot.glb', RobotExpressive: 'models/RobotExpressive.glb' };
-    for (const name in files) {
-        loader.load(files[name], (gltf) => {
-            enemyModels[name] = gltf.scene;
-            enemyAnimations[name] = gltf.animations;
-            if (typeof enemies !== 'undefined') { for (const _e of enemies) { if (_e.mesh && _e.mesh.userData.placeholder) attachEnemyModel(_e.mesh, _e.enemyLevel); } }
+    const want = Object.keys(ENEMY_MODEL_FILES);
+
+    function onLoaded(name, gltf) {
+        // GLB 自带的材质同样是 envMapIntensity 默认 1.0，在 IBL 开启时会把士兵
+        // 打成过曝的橙色塑料。这里在「加载完成」而不是「每个实例」处统一压一次：
+        // SkeletonUtils.clone 是共享材质的，改一次对所有克隆体生效，也不会随敌人数增长而重复遍历。
+        gltf.scene.traverse(function (o) {
+            if (!o.isMesh || !o.material) return;
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            for (const m of mats) {
+                if (m && m.envMapIntensity !== undefined) m.envMapIntensity = 0.12;
+            }
+        });
+        enemyModels[name] = gltf.scene;
+        enemyAnimations[name] = gltf.animations;
+        if (typeof enemies !== 'undefined') {
+            for (const _e of enemies) {
+                if (_e.mesh && _e.mesh.userData.placeholder) attachEnemyModel(_e.mesh, _e.enemyLevel);
+            }
+        }
+    }
+
+    function onFailed(name, err) {
+        // 这里必须留痕。历史上三条 onError 是缺省的，
+        // 结果 CORS 拦截在 __initErrors 里一条都不剩，排查时只能靠肉眼看控制台。
+        reportInitError('loadEnemyModels:' + name, err || new Error('未知加载失败'));
+        if (_modelFailures.indexOf(name) < 0) _modelFailures.push(name);
+        if (_modelFailures.length >= want.length) _showModelFallbackNotice();
+    }
+
+    if (location.protocol === 'file:') {
+        _loadEmbeddedModels(function (emb) {
+            if (!emb) {
+                want.forEach(function (n) { onFailed(n, new Error('内嵌模型不可用')); });
+                return;
+            }
+            want.forEach(function (name) {
+                const b64 = emb[name];
+                if (!b64) { onFailed(name, new Error('内嵌模型缺少 ' + name)); return; }
+                try {
+                    // 第二个参数是资源根路径，GLB 自带贴图，留空即可
+                    loader.parse(_b64ToArrayBuffer(b64), '', function (gltf) {
+                        onLoaded(name, gltf);
+                    }, function (err) {
+                        onFailed(name, err);
+                    });
+                } catch (e) {
+                    onFailed(name, e);
+                }
+            });
+        });
+        return;
+    }
+
+    for (const name of want) {
+        loader.load(ENEMY_MODEL_FILES[name], function (gltf) {
+            onLoaded(name, gltf);
+        }, undefined, function (err) {
+            onFailed(name, err);
         });
     }
 }
@@ -1960,7 +2236,10 @@ function setupEnemyModel(grp, modelName) {
         grp.add(_gun);
         grp.userData.gun = _gun;
         grp.userData.handBone = _hand;
-        if (typeof showFloatingMsg === 'function') showFloatingMsg('已挂枪 @ ' + _hand.name);
+        // 以前这里有一行 showFloatingMsg('已挂枪 @ ' + _hand.name)。
+        // 那是调骨位时的临时输出，但每生成一个敌人就会在屏幕中央弹一次，
+        // 一局里能弹几十条。骨位查找失败是静默的 false，删掉这行不影响诊断。
+        // 需要确认挂枪是否成功时，看 grp.userData.gun 是否存在即可。
     }
     const mixer = new THREE.AnimationMixer(model);
     const anims = enemyAnimations[modelName] || [];
@@ -2310,8 +2589,10 @@ function createEnvironment() {
         obstacles.push({ mesh: water, isAABB: true, halfW: w.w / 2, halfD: w.d / 2, isWater: true });
     }
 
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.9 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: theme.treeColor ?? 0x2a5a2a, roughness: 0.85 });
+    // 树冠/树干同样要压 envMapIntensity：默认 1.0 会让叶子吃满 IBL 变成薄荷绿塑料片，
+    // 在实际画面里比天空还亮。0.12 与地面 0.18 同一量级，靠漫反射+阴影保留体积感。
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.9, envMapIntensity: 0.12 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: theme.treeColor ?? 0x2a5a2a, roughness: 0.85, envMapIntensity: 0.12 });
     for (const t of ((MAP_DATA && MAP_DATA.trees) || [])) {
         const tree = new THREE.Group();
         const h = t.h || (2.2 + (Math.abs(t.x * 7 + t.z * 13) % 10) / 10);
@@ -2329,10 +2610,12 @@ function createEnvironment() {
     }
 
     // === 场景装饰物：油桶、木箱、栅栏 ===
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x8b2500, roughness: 0.6, metalness: 0.4 });
-    const barrelBlueMat = new THREE.MeshStandardMaterial({ color: 0x1a3a6a, roughness: 0.6, metalness: 0.4 });
-    const crateMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.85 });
-    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
+    // 这四个材质原来都是默认 envMapIntensity 1.0，比地面 0.18 亮 5.5 倍，
+    // 在 IBL 开启的近景里油桶会反光成塑料罐。与 world_props.mat() 保持同一档。
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x8b2500, roughness: 0.6, metalness: 0.4, envMapIntensity: 0.12 });
+    const barrelBlueMat = new THREE.MeshStandardMaterial({ color: 0x1a3a6a, roughness: 0.6, metalness: 0.4, envMapIntensity: 0.12 });
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.85, envMapIntensity: 0.12 });
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9, envMapIntensity: 0.12 });
     const decorCount = 35 + Math.floor(Math.random() * 15);
     for (let di = 0; di < decorCount; di++) {
         const dx = (Math.random() - 0.5) * (CONFIG.mapSize - 20);
@@ -3142,7 +3425,9 @@ function repairWeapon(wKey){
     if(!wKey||wKey==='knife')return;
     var dur=getWeaponDurability(wKey);
     if(dur>=100){alert('该武器耐久已满！');return;}
-    var repairCost=Math.round((100-dur)*500); // ₵500 per 1% durability
+    // ₵150/1% 与 ECON.PRICE_SCALE 同比例（原 500 × 0.625 ≈ 312，但维修是消耗项，
+    // 按 150 定档让「修满一把枪」约等于一次中等战利品，不至于修枪就破产）。
+    var repairCost=Math.round((100-dur)*150);
     if(P.money<repairCost){alert('资金不足！需要 ₵'+repairCost.toLocaleString());return;}
     P.money-=repairCost;
     P.weaponDurability[wKey]=100;
@@ -5119,6 +5404,12 @@ function spawnContainers(){
 
 function createContainer(type, x, z){
     const def = CONTAINER_TYPES[type];
+    // 惰性建组：保证「所有容器在同一个父节点下」，合批才有统一入口。
+    if (!containerGroup && typeof scene !== 'undefined' && scene) {
+        containerGroup = new THREE.Group();
+        containerGroup.name = 'containerGroup';
+        scene.add(containerGroup);
+    }
     const grp = new THREE.Group();
 
     // Different 3D models based on container shape
@@ -5126,88 +5417,92 @@ function createContainer(type, x, z){
 
     if (shape === 'long') {
         // Weapon box: long rectangular military crate (green)
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 0.9), new THREE.MeshStandardMaterial({color:def.color, roughness:0.6, metalness:0.2}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 0.9), _cMat(def.color, {roughness:0.6, metalness:0.2}));
         body.position.y=0.3; body.castShadow=body.receiveShadow=true; grp.add(body);
-        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 0.95), new THREE.MeshStandardMaterial({color:0x2a4a2a, roughness:0.5}));
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 0.95), _cMat(0x2a4a2a, {roughness:0.5}));
         lid.position.y=0.65; grp.add(lid);
         // Ammo marking stripe
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 0.1), new THREE.MeshBasicMaterial({color:0xffcc00}));
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 0.1), _cBasic(0xffcc00));
         stripe.position.set(0, 0.61, 0.45); grp.add(stripe);
         // Latches
         for (let lx of [-0.7, 0, 0.7]) {
-            const latch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.08), new THREE.MeshStandardMaterial({color:0x999999, metalness:0.8}));
+            const latch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.08), _cMat(0x999999, {metalness:0.8}));
             latch.position.set(lx, 0.62, 0.47); grp.add(latch);
         }
     } else if (shape === 'cube') {
         // Medical box: white cube with red cross
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 0.9), new THREE.MeshStandardMaterial({color:def.color, roughness:0.4, metalness:0.1}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 0.9), _cMat(def.color, {roughness:0.4, metalness:0.1}));
         body.position.y=0.45; body.castShadow=body.receiveShadow=true; grp.add(body);
         // Red cross on top
-        const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.03, 0.7), new THREE.MeshBasicMaterial({color:0xff0000}));
+        const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.03, 0.7), _cBasic(0xff0000));
         crossH.position.set(0, 0.91, 0); grp.add(crossH);
-        const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.03, 0.25), new THREE.MeshBasicMaterial({color:0xff0000}));
+        const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.03, 0.25), _cBasic(0xff0000));
         crossV.position.set(0, 0.91, 0); grp.add(crossV);
         // Handle
-        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), new THREE.MeshStandardMaterial({color:0xcccccc, metalness:0.6}));
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), _cMat(0xcccccc, {metalness:0.6}));
         handle.rotation.x = Math.PI/2; handle.position.set(0, 0.92, 0); grp.add(handle);
     } else if (shape === 'tall') {
         // Equipment case: dark gray tall Pelican-style case
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.7), new THREE.MeshStandardMaterial({color:def.color, roughness:0.3, metalness:0.5}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.7), _cMat(def.color, {roughness:0.3, metalness:0.5}));
         body.position.y=0.55; body.castShadow=body.receiveShadow=true; grp.add(body);
-        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.06, 0.72), new THREE.MeshStandardMaterial({color:0x222222, metalness:0.7}));
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.06, 0.72), _cMat(0x222222, {metalness:0.7}));
         trim.position.y=0.02; grp.add(trim);
         // Corner protectors
         for (let cx of [-0.42, 0.42]) { for (let cz of [-0.32, 0.32]) {
-            const cp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshStandardMaterial({color:0x333333, metalness:0.8}));
+            const cp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), _cMat(0x333333, {metalness:0.8}));
             cp.position.set(cx, 0.04, cz); grp.add(cp);
         }}
     } else if (shape === 'safe') {
         // Safe/lockbox: small metal box with gold trim (high value indicator)
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), new THREE.MeshStandardMaterial({color:0x3a3a3a, roughness:0.2, metalness:0.8}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), _cMat(0x3a3a3a, {roughness:0.2, metalness:0.8}));
         body.position.y=0.35; body.castShadow=true; grp.add(body);
         // Gold trim
-        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.06, 0.75), new THREE.MeshStandardMaterial({color:0xffd700, roughness:0.3, metalness:0.9, emissive:0x332200, emissiveIntensity:0.3}));
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.06, 0.75), _cMat(0xffd700, {roughness:0.3, metalness:0.9, emissive:0x332200, emissiveIntensity:0.3}));
         trim.position.y=0.04; grp.add(trim);
         // Dial
-        const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 16), new THREE.MeshStandardMaterial({color:0xffd700, metalness:0.9}));
+        const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 16), _cMat(0xffd700, {metalness:0.9}));
         dial.position.set(0.25, 0.35, 0.35); grp.add(dial);
         // Keyhole
-        const keyhole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 8), new THREE.MeshBasicMaterial({color:0x111111}));
+        const keyhole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 8), _cBasic(0x111111));
         keyhole.position.set(0, 0.35, 0.35); grp.add(keyhole);
     } else if (shape === 'small') {
         // Ammo box: small red/brown metal box
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.6), new THREE.MeshStandardMaterial({color:def.color, roughness:0.5, metalness:0.4}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.6), _cMat(def.color, {roughness:0.5, metalness:0.4}));
         body.position.y=0.25; body.castShadow=body.receiveShadow=true; grp.add(body);
-        const lid = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.08, 0.64), new THREE.MeshStandardMaterial({color:0x4a2020, roughness:0.3, metalness:0.5}));
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.08, 0.64), _cMat(0x4a2020, {roughness:0.3, metalness:0.5}));
         lid.position.y=0.53; grp.add(lid);
     } else if (shape === 'premium') {
         // Premium box: glowing gold crate
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.0), new THREE.MeshStandardMaterial({color:0x4a3a1a, roughness:0.3, metalness:0.6}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.0), _cMat(0x4a3a1a, {roughness:0.3, metalness:0.6}));
         body.position.y=0.5; body.castShadow=true; grp.add(body);
-        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.12, 1.04), new THREE.MeshStandardMaterial({color:0xffd700, roughness:0.2, metalness:0.9, emissive:0x332200, emissiveIntensity:0.4}));
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.12, 1.04), _cMat(0xffd700, {roughness:0.2, metalness:0.9, emissive:0x332200, emissiveIntensity:0.4}));
         lid.position.y=1.04; grp.add(lid);
         // Corner gems
         for (let gx of [-0.55, 0.55]) { for (let gz of [-0.35, 0.35]) {
-            const gem = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({color:0xff4444}));
+            const gem = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), _cBasic(0xff4444));
             gem.position.set(gx, 0.52, gz); grp.add(gem);
         }}
     } else {
         // Supply crate: standard wooden crate
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), new THREE.MeshStandardMaterial({color:def.color, roughness:0.7, metalness:0.1}));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), _cMat(def.color, {roughness:0.7, metalness:0.1}));
         body.position.y=0.45; body.castShadow=body.receiveShadow=true; grp.add(body);
         // Wood plank lines
         for (let py of [0.3, 0.45, 0.6]) {
-            const plank = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.02, 0.82), new THREE.MeshStandardMaterial({color:0x6a4a14, roughness:0.6}));
+            const plank = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.02, 0.82), _cMat(0x6a4a14, {roughness:0.6}));
             plank.position.y=py; grp.add(plank);
         }
     }
 
-    // Glow ring (all containers) - color indicates value tier
+    // 地表价值光圈：颜色表示价值档位。
+    // 原来是每个容器一个透明 RingGeometry，透明物体不参与 batchStatic，
+    // 于是 170 个光圈就是 170 次 draw call —— 单独合批时它们才是最大的漏网项。
+    // 这里改成只登记位置，等容器全部生成完再一次性做成 3 个 InstancedMesh。
     const glowColor = (shape === 'safe' || shape === 'premium') ? 0xffd700 : (shape === 'tall' || shape === 'long') ? 0x4a90d9 : 0x888888;
-    const glow = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.9, 16), new THREE.MeshBasicMaterial({color:glowColor, transparent:true, opacity:0.3+(shape==='premium'?0.2:0)+(shape==='safe'?0.15:0), side:THREE.DoubleSide}));
-    glow.rotation.x = -Math.PI/2; glow.position.y = 0.03; grp.add(glow);
+    const glowOpacity = 0.3 + (shape === 'premium' ? 0.2 : 0) + (shape === 'safe' ? 0.15 : 0);
+    _containerGlow.push({ x: x, z: z, color: glowColor, opacity: glowOpacity });
 
-    grp.position.set(x, 0, z); scene.add(grp);
+    grp.position.set(x, 0, z);
+    (containerGroup || scene).add(grp);
 
     // 技能效果：额外物品（寻宝猎人）+ 稀有物品概率提升（幸运儿）
     let extraLootBonus = Math.floor(getTotalSkillEffect('extraLoot'));
@@ -5229,11 +5524,107 @@ function createContainer(type, x, z){
         const slot = findFreeSlot(containerGrid, def.w||5, def.h||3, it);
         if (slot) placeInGrid(containerGrid, def.w||5, it, slot.col, slot.row);
     }
+    // FIX-05 / FIX-06：常规物品抽完后，再各自掷一次稀有出货。
+    // 放在这里（而不是池子里塞条目）是本次平衡修复的核心：
+    // 稀有物的出现概率从此与池子大小无关，改常规池配比不会再连带改变稀有产出。
+    _rollContainerRare(def, containerGrid, type);
     const ci = containerGrid._items || [];
     const items = ci.map(e => ({...ITEMS[e.id], type:e.id, taken:false, gridEntry:e}));
 
     containers.push({mesh:grp, type, name:def.name, icon:def.icon, x, z, items, grid:containerGrid, gridW:def.w||5, gridH:def.h||3, searchTime:def.searchTime||1.5, searched:false});
 }
+
+// ========== 容器合批 ==========
+
+/**
+ * 把所有待建光圈做成 InstancedMesh。
+ *
+ * 为什么单独处理：光圈是透明的，WorldPolish.batchStatic 明确跳过透明材质
+ * （避免打乱混合顺序）。如果不管它，170 个光圈就是 170 次 draw call，
+ * 能把刚合批省下的收益吃掉四分之一。
+ *
+ * 分组键必须带 opacity —— 同一组 InstancedMesh 共用一个材质，opacity 是材质级参数。
+ * 只按颜色分组会让「高级箱（0.5）」和「保险箱（0.45）」被迫取同一个透明度。
+ */
+function _buildContainerGlow() {
+    if (!_containerGlow.length || !containerGroup) return 0;
+    const groups = new Map();
+    for (const g of _containerGlow) {
+        const k = g.color + '|' + g.opacity.toFixed(2);
+        if (!groups.has(k)) groups.set(k, { color: g.color, opacity: g.opacity, pts: [] });
+        groups.get(k).pts.push(g);
+    }
+    // 共享几何：所有光圈都是同一个 RingGeometry(0.6,0.9,16)
+    const ring = new THREE.RingGeometry(0.6, 0.9, 16);
+    const mtx = new THREE.Matrix4();
+    const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+    const pos = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    let made = 0;
+    groups.forEach(function (grp) {
+        const mat = new THREE.MeshBasicMaterial({
+            color: grp.color, transparent: true, opacity: grp.opacity,
+            side: THREE.DoubleSide, depthWrite: false,
+        });
+        const inst = new THREE.InstancedMesh(ring, mat, grp.pts.length);
+        for (let i = 0; i < grp.pts.length; i++) {
+            pos.set(grp.pts[i].x, 0.03, grp.pts[i].z);
+            mtx.compose(pos, quat, one);
+            inst.setMatrixAt(i, mtx);
+        }
+        inst.instanceMatrix.needsUpdate = true;
+        inst.userData.isContainerGlow = true;
+        // 必须关掉视锥剔除：InstancedMesh 的包围球按「单个几何」算，
+        // 光圈散布在全图，按原点包围球裁会整批消失（只在看向地图中心时才出现）。
+        inst.frustumCulled = false;
+        containerGroup.add(inst);
+        made++;
+    });
+    // 消费掉，避免下一次运行时重复生成同一批
+    _containerGlow.length = 0;
+    return made;
+}
+
+/**
+ * 容器生成收尾：建光圈 + 合批。
+ *
+ * 可重复调用：钥匙房是玩家中途解锁的，解锁时会补 3 个容器进来。
+ * batchStatic 会跳过已合批（isBatchedStatic）和已被隐藏的原始网格，
+ * 所以第二次调用只会合并新增的那几个，不会把整批重做一遍。
+ */
+function finalizeContainerBatching() {
+    if (!containerGroup || !containers.length) return { before: 0, after: 0, glow: 0 };
+    const glow = _buildContainerGlow();
+    let res = { before: 0, after: 0, merged: 0 };
+    if (typeof WorldPolish !== 'undefined' && WorldPolish.batchStatic) {
+        res = WorldPolish.batchStatic(containerGroup) || res;
+    }
+    if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[containers] 合批 ' + (res.before || 0) + ' → ' + (res.after || 0) + '，光圈实例 ' + glow + ' 组');
+    }
+    return { before: res.before || 0, after: res.after || 0, glow: glow };
+}
+
+/**
+ * 重开一局时清空容器。
+ *
+ * 必须连 containerGroup 的子节点一起清：合批产出的合并网格不是任何 container.mesh
+ * 的子孙，只按 containers 数组删会留下一整张「上一局的箱子」。
+ */
+function clearContainers() {
+    if (containerGroup) {
+        while (containerGroup.children.length) {
+            const o = containerGroup.children[0];
+            containerGroup.remove(o);
+            o.traverse(function (n) { if (n.geometry && n.geometry.dispose) n.geometry.dispose(); });
+        }
+    } else {
+        for (const c of containers) { if (c.mesh && c.mesh.parent) c.mesh.parent.remove(c.mesh); }
+    }
+    containers.length = 0;
+    _containerGlow.length = 0;
+}
+
 
 // ========== Key Building System ==========
 function initKeyBuildings() {
@@ -5312,6 +5703,8 @@ function tryUnlockKeyBuilding(kb) {
     if (kb.glowRing) { kb.glowRing.visible = false; }
     // Spawn containers inside key building
     spawnKeyBuildingContainers(kb);
+    // 钥匙房是中途解锁的，新补的 3 个容器要单独合批一次（batchStatic 只处理未合批的网格）
+    if (typeof finalizeContainerBatching === 'function') finalizeContainerBatching();
     // Remove collision box so player can enter the building
     for (var oi = obstacles.length - 1; oi >= 0; oi--) {
         var obs = obstacles[oi];
@@ -10129,7 +10522,7 @@ function startGame(){
     if(savedBackpack&&savedBackpack._items&&savedBackpack._items.length>0){S.backpack=savedBackpack;S.backpackCols=savedBPCols;S.backpackRows=savedBPRows;}
     if(S.weaponSlots[3]!=='knife')S.weaponSlots[3]='knife'; // Always have knife
 
-    enemies.forEach(e=>scene.remove(e.mesh));containers.forEach(c=>scene.remove(c.mesh));particles.forEach(p=>scene.remove(p.mesh));bulletTrails.forEach(b=>{if(b.mesh)scene.remove(b.mesh);});if(extractPoints)extractPoints.forEach(ep=>scene.remove(ep.mesh));
+    enemies.forEach(e=>scene.remove(e.mesh));clearContainers();particles.forEach(p=>scene.remove(p.mesh));bulletTrails.forEach(b=>{if(b.mesh)scene.remove(b.mesh);});if(extractPoints)extractPoints.forEach(ep=>scene.remove(ep.mesh));
     bossTaskPoints.forEach(tp=>scene.remove(tp.mesh));
     airDrops.forEach(ad=>scene.remove(ad.mesh));
     enemies=[];enemyHitboxes=[];containers=[];particles=[];bulletTrails=[];extractPoints=[];bosses=[];bossTaskPoints=[];airDrops=[];
@@ -10151,6 +10544,9 @@ function startGame(){
     searchAnimData=null;S._isSearching=false;
 
     spawnContainers();spawnExtractPoints();spawnEnemies();spawnGroundLoot();
+    // 容器合批必须在本帧绘制之前完成：此时 170 个容器的 912 个子网格已经全部建好，
+    // 再晚就会被渲染一帧才发现，再早则合并到一半。
+    finalizeContainerBatching();
     // Spawn boss task points
     bosses=[];bossTaskPoints=[];
     spawnBossTaskPoints(MAP_DATA);

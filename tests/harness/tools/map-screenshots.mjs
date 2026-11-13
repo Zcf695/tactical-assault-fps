@@ -20,7 +20,7 @@ const MAPS = [
 ];
 
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-const outDir = path.join(PROJECT_ROOT, 'tests', 'evidence', stamp + '-art');
+const outDir = path.join(PROJECT_ROOT, 'tests', 'evidence', 'art', stamp + '-screens');
 fs.mkdirSync(outDir, { recursive: true });
 
 // 注意：本工具用 ?perf=off 关闭降级以保证画面可判断，此时后期链开启，
@@ -83,7 +83,17 @@ try {
   const bootProbe = await page.evaluate(probe);
   const bootCalls = await callsMax(page, 30);
   report.boot = { ...bootProbe, callsMax: bootCalls };
-  await page.screenshot({ path: path.join(outDir, '04-首局-未进图.png') });
+  // 首局截图要点：此时玩家还没有进图（容器/敌人/掉落尚未生成），
+  // 场景里只有环境。把登录层藏掉，让「11,000 个网格已合批成 160 个可见对象」这件事可见——
+  // 这正是首局合批修复的观感证据（修复前这是 11,000 个独立网格、约 3,500 draw call）。
+  await page.evaluate(() => {
+    for (const id of ['loginScreen', 'lobbyScreen', 'loadingScreen']) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    }
+  });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(outDir, '04-首局-未进图-环境已合批.png') });
   console.log('首局(未进图): calls max=' + bootCalls + ' 可见网格=' + bootProbe.envVisibleMeshes +
               '/' + bootProbe.envTotalMeshes + ' level=' + bootProbe.level + ' dpr=' + bootProbe.dpr);
 

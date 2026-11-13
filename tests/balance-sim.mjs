@@ -240,7 +240,21 @@ function loadData() {
   // 检测 game.js 里是否仍存在「红藏品全量 concat」（FIX-06 未修时的特征）
   const hasRedConcat = /CONTAINER_TYPES\.(safe|premiumBox)\.items\s*=\s*CONTAINER_TYPES\.\1\.items\.concat\(\s*_rcIds\s*\)/.test(gameSrc);
 
-  return { ITEMS, SHOP_PRICES, CONTAINER_TYPES, CC, RC, hasRedConcat, gameSrc };
+  // FIX-07 是否已落地：直接读源码里的 ECON，而不是假设「没修就是 1.0」。
+  // 必要性：工程改了系数之后，如果模拟器仍按 1.0 算，--state=current 会继续报一堆失败，
+  // 而那是假失败 —— 报告会指向一个已经修好的问题，下一步就会有人去改不该改的数字。
+  let ECON = null;
+  const econAt = gameSrc.indexOf('const ECON = {');
+  if (econAt >= 0) {
+    try {
+      const lit = extractLiteral(gameSrc, 'const ECON = {', 'game.js');
+      if (lit && typeof lit === 'object') ECON = lit;
+    } catch (e) { ECON = null; }
+  }
+  const hasJackpot = /JACKPOT_TABLE\s*=/.test(gameSrc);
+  const hasRedRoll = /RED_ROLL\s*=\s*\{/.test(gameSrc);
+
+  return { ITEMS, SHOP_PRICES, CONTAINER_TYPES, CC, RC, hasRedConcat, gameSrc, ECON, hasJackpot, hasRedRoll };
 }
 
 // ============================================================
@@ -248,7 +262,7 @@ function loadData() {
 // ============================================================
 
 function buildModel(data, opts) {
-  const { ITEMS, SHOP_PRICES, CONTAINER_TYPES, CC, RC, hasRedConcat } = data;
+  const { ITEMS, SHOP_PRICES, CONTAINER_TYPES, CC, RC, hasRedConcat, ECON, hasJackpot, hasRedRoll } = data;
 
   // 深拷贝，避免污染源数据
   const items = JSON.parse(JSON.stringify(ITEMS));
@@ -279,8 +293,14 @@ function buildModel(data, opts) {
 
   if (opts.state === 'current') {
     // 当前代码的实测：应用 game.js 运行时的 concat 行为
-    lootScale = 1;
-    priceScale = 1;
+    //
+    // 缩放系数从源码读，不再写死 1.0。写死会让「已修复」被读成「未修复」，
+    // 而这两种状态在报告里的失败项长得一模一样。
+    lootScale = (ECON && typeof ECON.LOOT_SCALE === 'number') ? ECON.LOOT_SCALE : 1;
+    priceScale = (ECON && typeof ECON.PRICE_SCALE === 'number') ? ECON.PRICE_SCALE : 1;
+    // 掷骰机制是否已落地，同样以源码为准
+    useJackpot = !!hasJackpot;
+    useRedRoll = !!hasRedRoll;
     if (hasRedConcat) {
       pools.safe.items = pools.safe.items.concat(redIds);
       pools.premiumBox.items = pools.premiumBox.items.concat(redIds);
@@ -643,7 +663,12 @@ function main() {
         + '  ' + (c.ok ? '' : '(' + c.rule + ')'));
     }
     if (opts.state === 'current') {
-      console.log('\n  注：--state=current 时以上断言预期大量失败——那正是「未修复」的证据。');
+      const _fails = report.checks.filter((c) => !c.ok).length;
+      if (_fails) {
+        console.log('\n  注：--state=current 时以上失败是「未修复」的证据；修复后应全部转绿。');
+      } else {
+        console.log('\n  注：--state=current 全部通过 —— 代码里的经济参数已与 GDD 目标一致。');
+      }
     }
   }
 

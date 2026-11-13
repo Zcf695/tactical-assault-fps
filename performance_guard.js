@@ -82,15 +82,29 @@ const PerformanceGuard = (function () {
             }
         }
 
-        // 第三级：去掉法线贴图与环境反射，这是像素着色器最贵的两块
+        // 第三级：削弱法线细节与环境反射，这是像素着色器最贵的两块。
+        //
+        // 注意：这里**不要**把 normalMap 置 null。
+        // 原因一（视觉）：置 null 会让低配档彻底丢掉法线细节，地面/混凝土变成纯色片，
+        //   而低配档恰恰是最需要「看起来还行」的档位；
+        // 原因二（性能）：normalMap 从有到无会改变材质的 define 集合，触发整批 program 重编译，
+        //   实测 program 28 → 41，卡顿 200ms+，比省下的着色开销更伤。
+        // 折中做法：保留贴图，把 normalScale 乘 0.5 —— 这是 uniform 变更，不重编译。
+        // 原始值记在 userData 里，保证 apply(3) 之后又 apply(4) 时不会被反复折半。
         if (n >= 3 && _scene) {
             _scene.traverse(function (o) {
                 if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
                 const m = o.material;
-                let dirty = false;
-                if (m.normalMap) { m.normalMap = null; dirty = true; }
-                if (m.envMapIntensity !== undefined && m.envMapIntensity > 0.1) { m.envMapIntensity = 0.1; dirty = true; }
-                if (dirty) m.needsUpdate = true;
+                if (m.normalMap && m.normalScale) {
+                    if (!m.userData._ns0) m.userData._ns0 = { x: m.normalScale.x, y: m.normalScale.y };
+                    m.normalScale.set(m.userData._ns0.x * 0.5, m.userData._ns0.y * 0.5);
+                }
+                // envMapIntensity 只在真的有环境贴图时才有意义；
+                // 没有 scene.environment 时写它纯属让材质 needsUpdate 一次，白增一次上传。
+                if (_scene.environment && m.envMapIntensity !== undefined && m.envMapIntensity > 0.12) {
+                    m.envMapIntensity = 0.12;
+                    m.needsUpdate = true;
+                }
             });
             if (typeof ItemIcons !== 'undefined' && ItemIcons.setLowMode) ItemIcons.setLowMode(true);
         }

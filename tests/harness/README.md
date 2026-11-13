@@ -102,11 +102,18 @@ tests/harness/
 ## 最近一次运行
 
 ```
-总计 17 条：PASS 15 / CONCERNS 2 / FAIL 0   耗时 92.3s
-CONCERNS：SMK-11 draw call（军事禁区 1088，阶段一阈值 >900 记 CONCERNS）
-          SMK-14 低画质置空 normalMap（424 个材质，program 20→39；美术底线争议待裁定）
-退出码 0
+总计 18 条：PASS 15 / CONCERNS 2 / FAIL 1   耗时 144.0s   退出码 1（预期内的红）
+FAIL    ：SMK-14 降级置空 424 个材质的 normalMap（已裁定禁止，见 strategy.md §7.4.5）
+          —— 修法在 performance_guard.js:91（改 normalScale 折半），测试不等代码
+CONCERNS：SMK-11 draw call 1043（阶段一阈值 >900）
+          FILE-01 file:// 下 enemyModels 0 个 / 14 个占位体（designPending：内联模型修法中）
 ```
+
+> **`FILE-01` 与 `SMK-14` 都需要第二个浏览器页面/会话，合计约 65s**。日常提交建议只跑快线：
+> `node smoke.mjs --only=SMK-01,SMK-02,REG-01,REG-02,SMK-03`（约 25s，覆盖启动 + 三起事故 + 核心战斗）。
+
+> **门是红的，而且应该红。** 不要为了变绿把 SMK-14 改回 CONCERNS——那是把「已知缺陷」改成「已知但不报」。
+> 如果只想验证别的东西：`node smoke.mjs --only=SMK-01,SMK-02,REG-01` 或临时 `--only` 跳过 SMK-14。
 
 > 性能用例内置**采样饥饿检测**：若采样帧数不足预期的 40%（机器被别的进程占满时可以复现），
 > 相关断言降级为 CONCERNS 而不是 FAIL —— 环境噪声不能当成产品退化报出去。

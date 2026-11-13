@@ -20,7 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { startServer, PROJECT_ROOT } from './server.mjs';
 import { openGame, resolveChromePath } from './browser.mjs';
@@ -68,7 +68,7 @@ function fmt(v) {
 
 async function main() {
   const runId = stamp();
-  const evidenceDir = path.join(PROJECT_ROOT, 'tests', 'evidence', runId);
+  const evidenceDir = path.join(PROJECT_ROOT, 'tests', 'evidence', 'qa', runId);
   fs.mkdirSync(evidenceDir, { recursive: true });
 
   const t0 = Date.now();
@@ -129,6 +129,7 @@ async function main() {
         missing: server.missing,
         state: sharedState,
         baseUrl: `${server.url}/index.html`,
+        fileUrl: pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href,
         evidenceDir,
         wait: sleep,
         call: (fn, ...args) => page.evaluate(fn, ...args),

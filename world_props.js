@@ -13,9 +13,20 @@ const WorldProps = (function () {
 
     // 颜色材质缓存：避免每个道具一份材质导致合批失效
     const _matCache = {};
+    /**
+     * 道具共用材质工厂。
+     *
+     * envMapIntensity 默认 0.12 而不是 Three.js 的 1.0：
+     * 地面在 graphics_enhancement 里被设成 0.18，道具若吃满 IBL，
+     * 箱子/路障会比脚下的地亮 5 倍，看起来像塑料玩具而不是沾灰的金属。
+     * 这个值同时必须进缓存 key —— 否则同一颜色但不同反射强度会互相串材质，
+     * 而串材质是静默的（拿到的对象看着没毛病，只是反光不对）。
+     */
     function mat(color, opt) {
         opt = opt || {};
-        const key = color + '|' + (opt.roughness || 0.8) + '|' + (opt.metalness || 0) + '|' + (opt.emissive || 0);
+        const envI = opt.envMapIntensity == null ? 0.12 : opt.envMapIntensity;
+        const key = color + '|' + (opt.roughness || 0.8) + '|' + (opt.metalness || 0) +
+            '|' + (opt.emissive || 0) + '|' + (opt.emissiveIntensity || 0) + '|' + envI;
         if (_matCache[key]) return _matCache[key];
         const m = new THREE.MeshStandardMaterial({
             color: color,
@@ -23,6 +34,7 @@ const WorldProps = (function () {
             metalness: opt.metalness || 0,
             emissive: opt.emissive || 0x000000,
             emissiveIntensity: opt.emissiveIntensity || 0,
+            envMapIntensity: envI,
         });
         _matCache[key] = m;
         return m;

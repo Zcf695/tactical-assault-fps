@@ -536,6 +536,21 @@ const PBRTextures = (function () {
 
     function ready(kind) { return !!_sets[kind]; }
 
+    /**
+     * 查询某类贴图的边长（像素），**不触发烘焙**。
+     *
+     * 存在的理由：地面 tile 必须按贴图实际尺寸归一化。
+     * 草地是 512²、砾石/沥青是 256²，若统一写 tile: 5.5，
+     * 换算出的 texel 密度会差一倍 —— 512² 下 1.07 cm/texel 刚好，
+     * 256² 下就变成 2.15 cm/texel，砾石颗粒被放大成 20-30cm 的斑块。
+     * 用 get() 也行，但它会顺手做完整个 65536 像素的烘焙；
+     * 材质升级阶段批量调用时，这等于把烘焙时机从「按需」变成「必然」。
+     */
+    function sizeOf(kind) {
+        const spec = SPECS[kind];
+        return spec ? (spec.size || 256) : 0;
+    }
+
     /** 预生成：分帧执行，避免一次性卡住开局 */
     function warmup(kinds) {
         const list = (kinds || ['concrete', 'asphalt', 'grass', 'corrugated', 'metal', 'wood']).filter(function (k) { return !_sets[k]; });
@@ -641,6 +656,18 @@ const PBRTextures = (function () {
         mat.metalness = opt.metalness == null ? (set.metalnessMap ? 1.0 : 0.0) : opt.metalness;
         mat.envMapIntensity = opt.envMapIntensity == null ? 0.28 : opt.envMapIntensity;
         if (opt.color != null) mat.color.set(opt.color);
+        // 把「实际生效的铺贴参数」写回材质，供验收脚本直接读数。
+        // 必要性：之前唯一能验证密度的方法是反推 UV attribute 的最大值，
+        // 一旦某个分支走了 fallback（applyTextureToMesh），反推出来的数字就不再代表 PBR 路径，
+        // 而字面上看不出区别 —— 这正是 2.15 cm/texel 那次回归没被当时用例抓住的原因。
+        mat.userData.pbr = {
+            kind: kind,
+            tileU: tileU,
+            tileV: tileV,
+            texSize: set.size || 0,
+            // 一张贴图铺 tileU 米，则每 texel 覆盖 tileU/texSize 米；乘 100 换算成厘米
+            cmPerTexel: set.size ? (tileU / set.size) * 100 : 0,
+        };
         mat.needsUpdate = true;
         return true;
     }
@@ -649,6 +676,7 @@ const PBRTextures = (function () {
         init: init,
         get: get,
         ready: ready,
+        sizeOf: sizeOf,
         warmup: warmup,
         applyToMesh: applyToMesh,
         kinds: Object.keys(SPECS),

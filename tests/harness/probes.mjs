@@ -106,6 +106,12 @@ export function probeGroundUV(designTile) {
     if (y > hiY) hiY = y;
   }
   const mapSize = (typeof MAP_DATA !== 'undefined' && MAP_DATA && MAP_DATA.mapSize) || CONFIG.mapSize;
+  // 材质上写回的实际铺贴参数（pbr_textures.applyToMesh 里写的 userData.pbr）。
+  // 断言应该读这个，而不是读用例里写死的常数 —— 写死常数会把「贴图换了尺寸」
+  // 误判成「UV 错了」，而这两件事的修法完全相反。
+  const pbr = (g.material && g.material.userData && g.material.userData.pbr) || null;
+  const groundKind = (typeof MAP_DATA !== 'undefined' && MAP_DATA && MAP_DATA.theme && MAP_DATA.theme.groundSurface) || 'grass';
+  const texSize = (typeof PBRTextures !== 'undefined' && PBRTextures.sizeOf) ? (PBRTextures.sizeOf(groundKind) || 0) : 0;
   return {
     found: true,
     geoType: g.geometry.type,
@@ -113,6 +119,9 @@ export function probeGroundUV(designTile) {
     spanY: +(hiY - loY).toFixed(2),
     mapSize,
     designTile,
+    pbr,
+    groundKind,
+    texSize,
     expectedSpan: +(mapSize / designTile).toFixed(2),
     effectiveTile: +((hi - lo) > 0 ? mapSize / (hi - lo) : 0).toFixed(2),
     locked: !!g.geometry.userData._pbrUV,
@@ -536,6 +545,36 @@ export function probeDrawCalls() {
   } catch (e) {
     return { calls: -1, triangles: -1, error: String(e && e.message) };
   }
+}
+
+/**
+ * envMapIntensity 分布（art 口径）：
+ *   同一场景内，排除水面/玻璃/金属三类，所有 MeshStandardMaterial 的 envMapIntensity ∈ [0.1, 0.4]，
+ *   且同 kind 材质取值一致。默认值 1.0 是「没配」的典型特征。
+ * 只在 IBL 生效（scene.environment !== null）时有视觉意义，故必须配 ?perf=off 的档位采。
+ */
+export function probeEnvIntensity() {
+  const out = { total: 0, outOfRange: 0, byValue: {}, samples: [], envorinmentOn: false, byKind: {} };
+  try {
+    out.envorinmentOn = !!(scene && scene.environment);
+    const seen = new Set();
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m || !m.isMeshStandardMaterial || seen.has(m.uuid)) continue;
+        seen.add(m.uuid);
+        out.total++;
+        const v = m.envMapIntensity;
+        const key = String(v);
+        out.byValue[key] = (out.byValue[key] || 0) + 1;
+        if (typeof v === 'number' && (v < 0.1 || v > 0.4)) {
+          out.outOfRange++;
+          if (out.samples.length < 5) out.samples.push(v);
+        }
+      }
+    });
+  } catch (e) {}
+  return out;
 }
 
 export function forceDegrade(level) {
